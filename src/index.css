@@ -1,0 +1,72 @@
+@import "tailwindcss";
+
+html,
+body {
+  overscroll-behavior-y: none;
+}
+
+/* ══════════════════════════════════════════════════
+   Paleta personalizada
+   Laranja primário para ações, neutros quentes para fundo
+   ══════════════════════════════════════════════════ */
+@theme {
+  /* ── Primary (Laranja) ── */
+  --color-primary-50: #fff1eb;
+  --color-primary-100: #ffe0d3;
+  --color-primary-200: #ffc0a8;
+  --color-primary-300: #ffa07d;
+  --color-primary-400: #ff7f51;
+  --color-primary-500: #fb642c;
+  --color-primary-600: #e5521c;
+  --color-primary-700: #c84312;
+  --color-primary-800: #9e330d;
+  --color-primary-900: #742409;
+
+  /* ── Accent (Azul profundo) ── */
+  --color-accent-50: #dceaf3;
+  --color-accent-100: #c0d9e9;
+  --color-accent-200: #8ebdd8;
+  --color-accent-300: #5ca1c7;
+  --color-accent-400: #2a85b6;
+  --color-accent-500: #1f5f8b;
+  --color-accent-600: #1a5179;
+  --color-accent-700: #17496b;
+  --color-accent-800: #123b56;
+  --color-accent-900: #0d2d42;
+
+  /* ── Superfícies e neutros quentes ── */
+  --color-surface: #ffffff;
+  --color-surface-alt: #f4efea;
+  --color-bg: #fcfaf8;
+  --color-border-custom: #e7ddd5;
+
+  /* ── Texto ── */
+  --color-text-primary: #231a15;
+  --color-text-secondary: #6e625b;
+  --color-text-disabled: #aa9e97;
+
+  /* ── Semânticas ── */
+  --color-success: #2e7d32;
+  --color-warning: #c47a00;
+  --color-error: #c62828;
+  --color-info: #1565c0;
+}
+
+/* ===== Fonte acessível e base global ===== */
+@layer base {
+  html {
+    font-family:
+      "Inter",
+      system-ui,
+      -apple-system,
+      sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  body {
+    background-color: var(--color-bg);
+    color: var(--color-text-primary);
+    min-height: 100vh;
+    margin: 0;
+  }
+}
