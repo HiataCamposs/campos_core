@@ -14,12 +14,14 @@ import {
   Menu,
   X,
   LogOut,
+  Zap,
 } from "lucide-react";
 
 const NAV_ITEMS = [
   { to: "/", label: "Início", icon: Home, end: true },
   { to: "/gelo", label: "Gelo", icon: Snowflake },
   { to: "/revenda", label: "Revenda", icon: Package },
+  { to: "/reposicao", label: "Reposição", icon: Zap },
   { to: "/veiculos", label: "Veículos", icon: Car },
   { to: "/lembretes", label: "Lembretes", icon: Bell },
 ];

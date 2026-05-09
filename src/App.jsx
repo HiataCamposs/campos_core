@@ -6,6 +6,7 @@ import Dashboard from "./pages/Dashboard";
 import Gelo from "./pages/Gelo";
 import Revenda from "./pages/Revenda";
 import Veiculos from "./pages/Veiculos";
+import Reposicao from "./pages/Reposicao";
 import Lembretes from "./pages/Lembretes";
 
 function ProtectedRoute({ children }) {
@@ -37,6 +38,7 @@ function AppRoutes() {
         <Route index element={<Dashboard />} />
         <Route path="gelo" element={<Gelo />} />
         <Route path="revenda" element={<Revenda />} />
+        <Route path="reposicao" element={<Reposicao />} />
         <Route path="veiculos" element={<Veiculos />} />
         <Route path="lembretes" element={<Lembretes />} />
       </Route>

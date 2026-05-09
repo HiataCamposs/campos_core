@@ -90,7 +90,7 @@ function MovCard({
   onDelete,
 }) {
   const [open, setOpen] = useState(false);
-  const isEntrada = mov.tipo === "entrada";
+  const isEntrada = mov._tipo === "entrada";
   const pdv = pdvs.find((p) => p.id === mov.pdv_id);
   const prod = produtos.find((n) => n.id === mov.natureza_id);
   const forn = fornecedores.find((f) => f.id === mov.fornecedor_id);
@@ -304,9 +304,13 @@ export default function Revenda() {
   const [filtroMov, setFiltroMov] = useState("todas");
 
   // Forms
-  const [formNatureza, setFormNatureza] = useState({ nome: "" });
+  const [formNatureza, setFormNatureza] = useState({ nome: "", natureza: "" });
+  const [prodNaturezaSuggestions, setProdNaturezaSuggestions] = useState([]);
+  const [showProdNaturezaSugg, setShowProdNaturezaSugg] = useState(false);
   const [formFornecedor, setFormFornecedor] = useState({
     nome: "",
+    contato_tipo: "",
+    contato_nome: "",
     contato: "",
     cidade: "",
     bairro: "",
@@ -317,6 +321,8 @@ export default function Revenda() {
   const [formPdv, setFormPdv] = useState({
     nome: "",
     natureza: "",
+    contato_tipo: "",
+    contato_nome: "",
     contato: "",
     cidade: "",
     bairro: "",
@@ -326,6 +332,8 @@ export default function Revenda() {
   });
   const [naturezaSuggestions, setNaturezaSuggestions] = useState([]);
   const [showNaturezaSugg, setShowNaturezaSugg] = useState(false);
+  const [tipoSuggestions, setTipoSuggestions] = useState([]);
+  const [showTipoSugg, setShowTipoSugg] = useState(false);
   const [formEntrada, setFormEntrada] = useState({
     data: today,
     fornecedor_id: "",
@@ -363,7 +371,38 @@ export default function Revenda() {
       .select("*")
       .is("deleted_at", null)
       .order("nome");
-    setFornecedores(data || []);
+    const ids = (data || []).map((f) => f.id);
+    const [{ data: contatos }, { data: enderecos }] = await Promise.all([
+      supabase
+        .from("cadastro_contatos")
+        .select("*")
+        .eq("entidade_tipo", "fornecedor")
+        .in("entidade_id", ids)
+        .is("deleted_at", null),
+      supabase
+        .from("cadastro_enderecos")
+        .select("*")
+        .eq("entidade_tipo", "fornecedor")
+        .in("entidade_id", ids)
+        .is("deleted_at", null),
+    ]);
+    const enriched = (data || []).map((f) => {
+      const c = (contatos || []).find((c) => c.entidade_id === f.id) || {};
+      const e = (enderecos || []).find((e) => e.entidade_id === f.id) || {};
+      return {
+        ...f,
+        contato_tipo: c.tipo || "",
+        contato_nome: c.nome || "",
+        contato: c.telefone || "",
+        _contato_id: c.id,
+        cidade: e.cidade || "",
+        bairro: e.bairro || "",
+        logradouro: e.logradouro || "",
+        numero: e.numero || "",
+        _endereco_id: e.id,
+      };
+    });
+    setFornecedores(enriched);
   }, []);
 
   const fetchPdvs = useCallback(async () => {
@@ -372,23 +411,81 @@ export default function Revenda() {
       .select("*")
       .is("deleted_at", null)
       .order("nome");
-    setPdvs(data || []);
+    const ids = (data || []).map((p) => p.id);
+    const [{ data: contatos }, { data: enderecos }] = await Promise.all([
+      supabase
+        .from("cadastro_contatos")
+        .select("*")
+        .eq("entidade_tipo", "pdv")
+        .in("entidade_id", ids)
+        .is("deleted_at", null),
+      supabase
+        .from("cadastro_enderecos")
+        .select("*")
+        .eq("entidade_tipo", "pdv")
+        .in("entidade_id", ids)
+        .is("deleted_at", null),
+    ]);
+    const enriched = (data || []).map((p) => {
+      const c = (contatos || []).find((c) => c.entidade_id === p.id) || {};
+      const e = (enderecos || []).find((e) => e.entidade_id === p.id) || {};
+      return {
+        ...p,
+        contato_tipo: c.tipo || "",
+        contato_nome: c.nome || "",
+        contato: c.telefone || "",
+        _contato_id: c.id,
+        cidade: e.cidade || "",
+        bairro: e.bairro || "",
+        logradouro: e.logradouro || "",
+        numero: e.numero || "",
+        _endereco_id: e.id,
+      };
+    });
+    setPdvs(enriched);
   }, []);
 
   const fetchMovimentacoes = useCallback(async () => {
-    let query = supabase
-      .from("revenda_movimentacoes")
-      .select("*")
-      .is("deleted_at", null)
-      .order("data", { ascending: false })
-      .order("tipo", { ascending: false })
-      .limit(100);
-    if (filtroMov === "entradas") query = query.eq("tipo", "entrada");
-    if (filtroMov === "saidas") query = query.eq("tipo", "saida");
-    if (filtroMov === "pendentes")
-      query = query.eq("tipo", "saida").eq("status_pagamento", "pendente");
-    const { data } = await query;
-    setMovimentacoes(data || []);
+    const fetchEntradas =
+      filtroMov === "saidas" || filtroMov === "pendentes"
+        ? Promise.resolve({ data: [] })
+        : supabase
+            .from("revenda_mov_entradas")
+            .select("*")
+            .is("deleted_at", null)
+            .order("data", { ascending: false })
+            .limit(100);
+    const fetchSaidas =
+      filtroMov === "entradas"
+        ? Promise.resolve({ data: [] })
+        : (() => {
+            let q = supabase
+              .from("revenda_mov_saidas")
+              .select("*")
+              .is("deleted_at", null)
+              .order("data", { ascending: false })
+              .limit(100);
+            if (filtroMov === "pendentes")
+              q = q.eq("status_pagamento", "pendente");
+            return q;
+          })();
+    const [{ data: entradas }, { data: saidas }] = await Promise.all([
+      fetchEntradas,
+      fetchSaidas,
+    ]);
+    const all = [
+      ...(entradas || []).map((e) => ({
+        ...e,
+        _tipo: "entrada",
+        _table: "revenda_mov_entradas",
+      })),
+      ...(saidas || []).map((s) => ({
+        ...s,
+        _tipo: "saida",
+        _table: "revenda_mov_saidas",
+      })),
+    ].sort((a, b) => (b.data || "").localeCompare(a.data || ""));
+    setMovimentacoes(all);
   }, [filtroMov]);
 
   const fetchAll = useCallback(async () => {
@@ -433,7 +530,10 @@ export default function Revenda() {
     if (editingProdutoId) {
       await supabase
         .from("revenda_naturezas")
-        .update({ nome: formNatureza.nome })
+        .update({
+          nome: formNatureza.nome,
+          natureza: formNatureza.natureza || null,
+        })
         .eq("id", editingProdutoId);
     } else {
       await supabase
@@ -443,36 +543,87 @@ export default function Revenda() {
     setSaving(false);
     setModal(null);
     setEditingProdutoId(null);
-    setFormNatureza({ nome: "" });
+    setFormNatureza({ nome: "", natureza: "" });
     await fetchNaturezas();
   };
 
   const handleSaveFornecedor = async (e) => {
     e.preventDefault();
     setSaving(true);
+    let entidadeId = editingFornecedorId;
     if (editingFornecedorId) {
       await supabase
         .from("revenda_fornecedores")
         .update({
           nome: formFornecedor.nome,
-          contato: formFornecedor.contato || null,
-          cidade: formFornecedor.cidade || null,
-          bairro: formFornecedor.bairro || null,
-          logradouro: formFornecedor.logradouro || null,
-          numero: formFornecedor.numero || null,
           observacao: formFornecedor.observacao || null,
         })
         .eq("id", editingFornecedorId);
     } else {
-      await supabase
+      const { data: inserted } = await supabase
         .from("revenda_fornecedores")
-        .insert({ ...formFornecedor, user_id: user.id });
+        .insert({
+          nome: formFornecedor.nome,
+          observacao: formFornecedor.observacao || null,
+          user_id: user.id,
+        })
+        .select("id")
+        .single();
+      entidadeId = inserted?.id;
+    }
+    if (entidadeId) {
+      // Upsert contato
+      const contatoPayload = {
+        entidade_tipo: "fornecedor",
+        entidade_id: entidadeId,
+        tipo: formFornecedor.contato_tipo || null,
+        nome: formFornecedor.contato_nome || null,
+        telefone: formFornecedor.contato || null,
+        user_id: user.id,
+      };
+      if (formFornecedor._contato_id) {
+        await supabase
+          .from("cadastro_contatos")
+          .update(contatoPayload)
+          .eq("id", formFornecedor._contato_id);
+      } else if (
+        formFornecedor.contato_tipo ||
+        formFornecedor.contato_nome ||
+        formFornecedor.contato
+      ) {
+        await supabase.from("cadastro_contatos").insert(contatoPayload);
+      }
+      // Upsert endereco
+      const enderecoPayload = {
+        entidade_tipo: "fornecedor",
+        entidade_id: entidadeId,
+        cidade: formFornecedor.cidade || null,
+        bairro: formFornecedor.bairro || null,
+        logradouro: formFornecedor.logradouro || null,
+        numero: formFornecedor.numero || null,
+        user_id: user.id,
+      };
+      if (formFornecedor._endereco_id) {
+        await supabase
+          .from("cadastro_enderecos")
+          .update(enderecoPayload)
+          .eq("id", formFornecedor._endereco_id);
+      } else if (
+        formFornecedor.cidade ||
+        formFornecedor.bairro ||
+        formFornecedor.logradouro ||
+        formFornecedor.numero
+      ) {
+        await supabase.from("cadastro_enderecos").insert(enderecoPayload);
+      }
     }
     setSaving(false);
     setModal(null);
     setEditingFornecedorId(null);
     setFormFornecedor({
       nome: "",
+      contato_tipo: "",
+      contato_nome: "",
       contato: "",
       cidade: "",
       bairro: "",
@@ -486,24 +637,74 @@ export default function Revenda() {
   const handleSavePdv = async (e) => {
     e.preventDefault();
     setSaving(true);
+    let entidadeId = editingPdvId;
     if (editingPdvId) {
       await supabase
         .from("revenda_pdvs")
         .update({
           nome: formPdv.nome,
           natureza: formPdv.natureza || null,
-          contato: formPdv.contato || null,
-          cidade: formPdv.cidade || null,
-          bairro: formPdv.bairro || null,
-          logradouro: formPdv.logradouro || null,
-          numero: formPdv.numero || null,
           observacao: formPdv.observacao || null,
         })
         .eq("id", editingPdvId);
     } else {
-      await supabase
+      const { data: inserted } = await supabase
         .from("revenda_pdvs")
-        .insert({ ...formPdv, user_id: user.id });
+        .insert({
+          nome: formPdv.nome,
+          natureza: formPdv.natureza || null,
+          observacao: formPdv.observacao || null,
+          user_id: user.id,
+        })
+        .select("id")
+        .single();
+      entidadeId = inserted?.id;
+    }
+    if (entidadeId) {
+      // Upsert contato
+      const contatoPayload = {
+        entidade_tipo: "pdv",
+        entidade_id: entidadeId,
+        tipo: formPdv.contato_tipo || null,
+        nome: formPdv.contato_nome || null,
+        telefone: formPdv.contato || null,
+        user_id: user.id,
+      };
+      if (formPdv._contato_id) {
+        await supabase
+          .from("cadastro_contatos")
+          .update(contatoPayload)
+          .eq("id", formPdv._contato_id);
+      } else if (
+        formPdv.contato_tipo ||
+        formPdv.contato_nome ||
+        formPdv.contato
+      ) {
+        await supabase.from("cadastro_contatos").insert(contatoPayload);
+      }
+      // Upsert endereco
+      const enderecoPayload = {
+        entidade_tipo: "pdv",
+        entidade_id: entidadeId,
+        cidade: formPdv.cidade || null,
+        bairro: formPdv.bairro || null,
+        logradouro: formPdv.logradouro || null,
+        numero: formPdv.numero || null,
+        user_id: user.id,
+      };
+      if (formPdv._endereco_id) {
+        await supabase
+          .from("cadastro_enderecos")
+          .update(enderecoPayload)
+          .eq("id", formPdv._endereco_id);
+      } else if (
+        formPdv.cidade ||
+        formPdv.bairro ||
+        formPdv.logradouro ||
+        formPdv.numero
+      ) {
+        await supabase.from("cadastro_enderecos").insert(enderecoPayload);
+      }
     }
     setSaving(false);
     setModal(null);
@@ -511,6 +712,8 @@ export default function Revenda() {
     setFormPdv({
       nome: "",
       natureza: "",
+      contato_tipo: "",
+      contato_nome: "",
       contato: "",
       cidade: "",
       bairro: "",
@@ -535,13 +738,13 @@ export default function Revenda() {
     };
     if (editingMovId) {
       await supabase
-        .from("revenda_movimentacoes")
+        .from("revenda_mov_entradas")
         .update(payload)
         .eq("id", editingMovId);
     } else {
       await supabase
-        .from("revenda_movimentacoes")
-        .insert({ ...payload, tipo: "entrada", user_id: user.id });
+        .from("revenda_mov_entradas")
+        .insert({ ...payload, user_id: user.id });
     }
     setSaving(false);
     setModal(null);
@@ -574,8 +777,7 @@ export default function Revenda() {
 
     if (qty < 0 && !isPerda && !editingMovId) {
       // Devolução → criar ENTRADA com quantidade positiva
-      await supabase.from("revenda_movimentacoes").insert({
-        tipo: "entrada",
+      await supabase.from("revenda_mov_entradas").insert({
         data: formSaida.data,
         natureza_id: formSaida.natureza_id || null,
         quantidade: absQty,
@@ -605,13 +807,13 @@ export default function Revenda() {
       };
       if (editingMovId) {
         await supabase
-          .from("revenda_movimentacoes")
+          .from("revenda_mov_saidas")
           .update(payload)
           .eq("id", editingMovId);
       } else {
         await supabase
-          .from("revenda_movimentacoes")
-          .insert({ ...payload, tipo: "saida", user_id: user.id });
+          .from("revenda_mov_saidas")
+          .insert({ ...payload, user_id: user.id });
       }
     }
     setSaving(false);
@@ -626,7 +828,7 @@ export default function Revenda() {
 
   const togglePago = async (id, isPago) => {
     await supabase
-      .from("revenda_movimentacoes")
+      .from("revenda_mov_saidas")
       .update({
         status_pagamento: isPago ? "pendente" : "pago",
         data_pagamento: isPago ? null : today,
@@ -658,13 +860,13 @@ export default function Revenda() {
 
   const openAddNatureza = () => {
     setEditingProdutoId(null);
-    setFormNatureza({ nome: "" });
+    setFormNatureza({ nome: "", natureza: "" });
     setModal("natureza");
   };
 
   const openEditNatureza = (n) => {
     setEditingProdutoId(n.id);
-    setFormNatureza({ nome: n.nome });
+    setFormNatureza({ nome: n.nome, natureza: n.natureza || "" });
     setModal("natureza");
   };
 
@@ -672,6 +874,8 @@ export default function Revenda() {
     setEditingFornecedorId(null);
     setFormFornecedor({
       nome: "",
+      contato_tipo: "",
+      contato_nome: "",
       contato: "",
       cidade: "",
       bairro: "",
@@ -686,12 +890,16 @@ export default function Revenda() {
     setEditingFornecedorId(f.id);
     setFormFornecedor({
       nome: f.nome,
+      contato_tipo: f.contato_tipo || "",
+      contato_nome: f.contato_nome || "",
       contato: f.contato || "",
       cidade: f.cidade || "",
       bairro: f.bairro || "",
       logradouro: f.logradouro || "",
       numero: f.numero || "",
       observacao: f.observacao || "",
+      _contato_id: f._contato_id,
+      _endereco_id: f._endereco_id,
     });
     setModal("fornecedor");
   };
@@ -701,6 +909,8 @@ export default function Revenda() {
     setFormPdv({
       nome: "",
       natureza: "",
+      contato_tipo: "",
+      contato_nome: "",
       contato: "",
       cidade: "",
       bairro: "",
@@ -716,12 +926,16 @@ export default function Revenda() {
     setFormPdv({
       nome: p.nome,
       natureza: p.natureza || "",
+      contato_tipo: p.contato_tipo || "",
+      contato_nome: p.contato_nome || "",
       contato: p.contato || "",
       cidade: p.cidade || "",
       bairro: p.bairro || "",
       logradouro: p.logradouro || "",
       numero: p.numero || "",
       observacao: p.observacao || "",
+      _contato_id: p._contato_id,
+      _endereco_id: p._endereco_id,
     });
     setModal("pdv");
   };
@@ -759,8 +973,8 @@ export default function Revenda() {
 
   const openEditMov = (m) => {
     setEditingMovId(m.id);
-    setEditingMovTipo(m.tipo);
-    if (m.tipo === "entrada") {
+    setEditingMovTipo(m._tipo);
+    if (m._tipo === "entrada") {
       setFormEntrada({
         data: m.data || today,
         fornecedor_id: m.fornecedor_id || "",
@@ -909,17 +1123,27 @@ export default function Revenda() {
                   </div>
                   <div className="min-w-0">
                     <p className="font-semibold text-sm truncate">{f.nome}</p>
-                    {f.contato && (
-                      <p className="text-xs text-text-disabled">{f.contato}</p>
+                    {(f.contato_tipo || f.contato_nome || f.contato) && (
+                      <p className="text-xs text-text-disabled truncate">
+                        {[f.contato_tipo, f.contato_nome, f.contato]
+                          .filter(Boolean)
+                          .join(" · ")}
+                      </p>
                     )}
                     {(f.bairro || f.cidade) && (
                       <p className="text-xs text-text-disabled truncate">
                         {[f.bairro, f.cidade].filter(Boolean).join(" · ")}
                       </p>
                     )}
-                    {!f.contato && !f.bairro && !f.cidade && (
-                      <p className="text-xs text-text-disabled">Sem detalhes</p>
-                    )}
+                    {!f.contato_tipo &&
+                      !f.contato_nome &&
+                      !f.contato &&
+                      !f.bairro &&
+                      !f.cidade && (
+                        <p className="text-xs text-text-disabled">
+                          Sem detalhes
+                        </p>
+                      )}
                   </div>
                 </div>
                 <div className="flex items-center gap-1">
@@ -967,17 +1191,27 @@ export default function Revenda() {
                   </div>
                   <div className="min-w-0">
                     <p className="font-semibold text-sm truncate">{p.nome}</p>
-                    {p.contato && (
-                      <p className="text-xs text-text-disabled">{p.contato}</p>
+                    {(p.contato_tipo || p.contato_nome || p.contato) && (
+                      <p className="text-xs text-text-disabled truncate">
+                        {[p.contato_tipo, p.contato_nome, p.contato]
+                          .filter(Boolean)
+                          .join(" · ")}
+                      </p>
                     )}
                     {(p.bairro || p.cidade) && (
                       <p className="text-xs text-text-disabled truncate">
                         {[p.bairro, p.cidade].filter(Boolean).join(" · ")}
                       </p>
                     )}
-                    {!p.contato && !p.bairro && !p.cidade && (
-                      <p className="text-xs text-text-disabled">Sem detalhes</p>
-                    )}
+                    {!p.contato_tipo &&
+                      !p.contato_nome &&
+                      !p.contato &&
+                      !p.bairro &&
+                      !p.cidade && (
+                        <p className="text-xs text-text-disabled">
+                          Sem detalhes
+                        </p>
+                      )}
                   </div>
                 </div>
                 <div className="flex items-center gap-1">
@@ -1025,7 +1259,7 @@ export default function Revenda() {
               fornecedores={fornecedores}
               onTogglePago={togglePago}
               onEdit={openEditMov}
-              onDelete={(id) => confirmDelete(id, "revenda_movimentacoes")}
+              onDelete={(id) => confirmDelete(id, m._table)}
             />
           ))}
         </div>
@@ -1052,6 +1286,66 @@ export default function Revenda() {
               className="w-full rounded-lg border border-border-custom bg-bg px-3 py-2 text-sm"
               placeholder="Ex: Picolé Chocolate, Gelo 5KG, Cachaça 1L"
             />
+          </div>
+          <div className="relative">
+            <label className="block text-sm font-medium mb-1">Natureza</label>
+            <input
+              type="text"
+              value={formNatureza.natureza}
+              onChange={(e) => {
+                const val = e.target.value;
+                setFormNatureza({ ...formNatureza, natureza: val });
+                if (val.length > 0) {
+                  const unique = [
+                    ...new Set(
+                      naturezas.map((n) => n.natureza).filter(Boolean),
+                    ),
+                  ];
+                  const filtered = unique.filter((n) =>
+                    n.toLowerCase().includes(val.toLowerCase()),
+                  );
+                  setProdNaturezaSuggestions(filtered);
+                  setShowProdNaturezaSugg(filtered.length > 0);
+                } else {
+                  setShowProdNaturezaSugg(false);
+                }
+              }}
+              onFocus={() => {
+                const val = formNatureza.natureza;
+                const unique = [
+                  ...new Set(naturezas.map((n) => n.natureza).filter(Boolean)),
+                ];
+                const filtered = val
+                  ? unique.filter((n) =>
+                      n.toLowerCase().includes(val.toLowerCase()),
+                    )
+                  : unique;
+                setProdNaturezaSuggestions(filtered);
+                setShowProdNaturezaSugg(filtered.length > 0);
+              }}
+              onBlur={() =>
+                setTimeout(() => setShowProdNaturezaSugg(false), 150)
+              }
+              className="w-full rounded-lg border border-border-custom bg-bg px-3 py-2 text-sm"
+              placeholder="Ex: Gelo, Picolé, Bebida..."
+              autoComplete="off"
+            />
+            {showProdNaturezaSugg && prodNaturezaSuggestions.length > 0 && (
+              <ul className="absolute z-50 left-0 right-0 mt-1 bg-surface border border-border-custom rounded-lg shadow-lg max-h-40 overflow-y-auto">
+                {prodNaturezaSuggestions.map((s) => (
+                  <li
+                    key={s}
+                    onMouseDown={() => {
+                      setFormNatureza({ ...formNatureza, natureza: s });
+                      setShowProdNaturezaSugg(false);
+                    }}
+                    className="px-3 py-2 text-sm cursor-pointer hover:bg-primary-50 hover:text-primary-500"
+                  >
+                    {s}
+                  </li>
+                ))}
+              </ul>
+            )}
           </div>
           <button
             type="submit"
@@ -1139,15 +1433,85 @@ export default function Revenda() {
           </div>
           <div>
             <label className="block text-sm font-medium mb-1">Contato</label>
-            <input
-              type="text"
-              value={formPdv.contato}
-              onChange={(e) =>
-                setFormPdv({ ...formPdv, contato: e.target.value })
-              }
-              className="w-full rounded-lg border border-border-custom bg-bg px-3 py-2 text-sm"
-              placeholder="Telefone / WhatsApp"
-            />
+            <div className="space-y-2">
+              <div className="relative">
+                <input
+                  type="text"
+                  value={formPdv.contato_tipo}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setFormPdv({ ...formPdv, contato_tipo: val });
+                    if (val.length > 0) {
+                      const unique = [
+                        ...new Set(
+                          pdvs.map((p) => p.contato_tipo).filter(Boolean),
+                        ),
+                      ];
+                      const filtered = unique.filter((n) =>
+                        n.toLowerCase().includes(val.toLowerCase()),
+                      );
+                      setTipoSuggestions(filtered);
+                      setShowTipoSugg(filtered.length > 0);
+                    } else {
+                      setShowTipoSugg(false);
+                    }
+                  }}
+                  onFocus={() => {
+                    const val = formPdv.contato_tipo;
+                    const unique = [
+                      ...new Set(
+                        pdvs.map((p) => p.contato_tipo).filter(Boolean),
+                      ),
+                    ];
+                    const filtered = val
+                      ? unique.filter((n) =>
+                          n.toLowerCase().includes(val.toLowerCase()),
+                        )
+                      : unique;
+                    setTipoSuggestions(filtered);
+                    setShowTipoSugg(filtered.length > 0);
+                  }}
+                  onBlur={() => setTimeout(() => setShowTipoSugg(false), 150)}
+                  className="w-full rounded-lg border border-border-custom bg-bg px-3 py-2 text-sm"
+                  placeholder="Tipo: Dono, Gerente, Atendente..."
+                  autoComplete="off"
+                />
+                {showTipoSugg && tipoSuggestions.length > 0 && (
+                  <ul className="absolute z-50 left-0 right-0 mt-1 bg-surface border border-border-custom rounded-lg shadow-lg max-h-40 overflow-y-auto">
+                    {tipoSuggestions.map((s) => (
+                      <li
+                        key={s}
+                        onMouseDown={() => {
+                          setFormPdv({ ...formPdv, contato_tipo: s });
+                          setShowTipoSugg(false);
+                        }}
+                        className="px-3 py-2 text-sm cursor-pointer hover:bg-primary-50 hover:text-primary-500"
+                      >
+                        {s}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+              <input
+                type="text"
+                value={formPdv.contato_nome}
+                onChange={(e) =>
+                  setFormPdv({ ...formPdv, contato_nome: e.target.value })
+                }
+                className="w-full rounded-lg border border-border-custom bg-bg px-3 py-2 text-sm"
+                placeholder="Nome: Aline, Marcos..."
+              />
+              <input
+                type="text"
+                value={formPdv.contato}
+                onChange={(e) =>
+                  setFormPdv({ ...formPdv, contato: e.target.value })
+                }
+                className="w-full rounded-lg border border-border-custom bg-bg px-3 py-2 text-sm"
+                placeholder="Telefone / WhatsApp"
+              />
+            </div>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
@@ -1243,18 +1607,98 @@ export default function Revenda() {
           </div>
           <div>
             <label className="block text-sm font-medium mb-1">Contato</label>
-            <input
-              type="text"
-              value={formFornecedor.contato}
-              onChange={(e) =>
-                setFormFornecedor({
-                  ...formFornecedor,
-                  contato: e.target.value,
-                })
-              }
-              className="w-full rounded-lg border border-border-custom bg-bg px-3 py-2 text-sm"
-              placeholder="Telefone / WhatsApp"
-            />
+            <div className="space-y-2">
+              <div className="relative">
+                <input
+                  type="text"
+                  value={formFornecedor.contato_tipo}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setFormFornecedor({ ...formFornecedor, contato_tipo: val });
+                    if (val.length > 0) {
+                      const unique = [
+                        ...new Set(
+                          [...pdvs, ...fornecedores]
+                            .map((x) => x.contato_tipo)
+                            .filter(Boolean),
+                        ),
+                      ];
+                      const filtered = unique.filter((n) =>
+                        n.toLowerCase().includes(val.toLowerCase()),
+                      );
+                      setTipoSuggestions(filtered);
+                      setShowTipoSugg(filtered.length > 0);
+                    } else {
+                      setShowTipoSugg(false);
+                    }
+                  }}
+                  onFocus={() => {
+                    const val = formFornecedor.contato_tipo;
+                    const unique = [
+                      ...new Set(
+                        [...pdvs, ...fornecedores]
+                          .map((x) => x.contato_tipo)
+                          .filter(Boolean),
+                      ),
+                    ];
+                    const filtered = val
+                      ? unique.filter((n) =>
+                          n.toLowerCase().includes(val.toLowerCase()),
+                        )
+                      : unique;
+                    setTipoSuggestions(filtered);
+                    setShowTipoSugg(filtered.length > 0);
+                  }}
+                  onBlur={() => setTimeout(() => setShowTipoSugg(false), 150)}
+                  className="w-full rounded-lg border border-border-custom bg-bg px-3 py-2 text-sm"
+                  placeholder="Tipo: Dono, Gerente, Atendente..."
+                  autoComplete="off"
+                />
+                {showTipoSugg && tipoSuggestions.length > 0 && (
+                  <ul className="absolute z-50 left-0 right-0 mt-1 bg-surface border border-border-custom rounded-lg shadow-lg max-h-40 overflow-y-auto">
+                    {tipoSuggestions.map((s) => (
+                      <li
+                        key={s}
+                        onMouseDown={() => {
+                          setFormFornecedor({
+                            ...formFornecedor,
+                            contato_tipo: s,
+                          });
+                          setShowTipoSugg(false);
+                        }}
+                        className="px-3 py-2 text-sm cursor-pointer hover:bg-primary-50 hover:text-primary-500"
+                      >
+                        {s}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+              <input
+                type="text"
+                value={formFornecedor.contato_nome}
+                onChange={(e) =>
+                  setFormFornecedor({
+                    ...formFornecedor,
+                    contato_nome: e.target.value,
+                  })
+                }
+                className="w-full rounded-lg border border-border-custom bg-bg px-3 py-2 text-sm"
+                placeholder="Nome: Aline, Marcos..."
+              />
+              <input
+                type="text"
+                value={formFornecedor.contato}
+                onChange={(e) =>
+                  setFormFornecedor({
+                    ...formFornecedor,
+                    contato: e.target.value,
+                  })
+                }
+                className="w-full rounded-lg border border-border-custom bg-bg px-3 py-2 text-sm"
+                placeholder="Telefone / WhatsApp"
+              />
+            </div>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
