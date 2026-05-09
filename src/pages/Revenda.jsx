@@ -316,6 +316,7 @@ export default function Revenda() {
   });
   const [formPdv, setFormPdv] = useState({
     nome: "",
+    natureza: "",
     contato: "",
     cidade: "",
     bairro: "",
@@ -323,6 +324,8 @@ export default function Revenda() {
     numero: "",
     observacao: "",
   });
+  const [naturezaSuggestions, setNaturezaSuggestions] = useState([]);
+  const [showNaturezaSugg, setShowNaturezaSugg] = useState(false);
   const [formEntrada, setFormEntrada] = useState({
     data: today,
     fornecedor_id: "",
@@ -488,6 +491,7 @@ export default function Revenda() {
         .from("revenda_pdvs")
         .update({
           nome: formPdv.nome,
+          natureza: formPdv.natureza || null,
           contato: formPdv.contato || null,
           cidade: formPdv.cidade || null,
           bairro: formPdv.bairro || null,
@@ -506,6 +510,7 @@ export default function Revenda() {
     setEditingPdvId(null);
     setFormPdv({
       nome: "",
+      natureza: "",
       contato: "",
       cidade: "",
       bairro: "",
@@ -695,6 +700,7 @@ export default function Revenda() {
     setEditingPdvId(null);
     setFormPdv({
       nome: "",
+      natureza: "",
       contato: "",
       cidade: "",
       bairro: "",
@@ -709,6 +715,7 @@ export default function Revenda() {
     setEditingPdvId(p.id);
     setFormPdv({
       nome: p.nome,
+      natureza: p.natureza || "",
       contato: p.contato || "",
       cidade: p.cidade || "",
       bairro: p.bairro || "",
@@ -1073,6 +1080,62 @@ export default function Revenda() {
               className="w-full rounded-lg border border-border-custom bg-bg px-3 py-2 text-sm"
               placeholder="Ex: Bar do Milton, Mercearia Super Lar"
             />
+          </div>
+          <div className="relative">
+            <label className="block text-sm font-medium mb-1">Natureza</label>
+            <input
+              type="text"
+              value={formPdv.natureza}
+              onChange={(e) => {
+                const val = e.target.value;
+                setFormPdv({ ...formPdv, natureza: val });
+                if (val.length > 0) {
+                  const unique = [
+                    ...new Set(pdvs.map((p) => p.natureza).filter(Boolean)),
+                  ];
+                  const filtered = unique.filter((n) =>
+                    n.toLowerCase().includes(val.toLowerCase()),
+                  );
+                  setNaturezaSuggestions(filtered);
+                  setShowNaturezaSugg(filtered.length > 0);
+                } else {
+                  setShowNaturezaSugg(false);
+                }
+              }}
+              onFocus={() => {
+                const val = formPdv.natureza;
+                const unique = [
+                  ...new Set(pdvs.map((p) => p.natureza).filter(Boolean)),
+                ];
+                const filtered = val
+                  ? unique.filter((n) =>
+                      n.toLowerCase().includes(val.toLowerCase()),
+                    )
+                  : unique;
+                setNaturezaSuggestions(filtered);
+                setShowNaturezaSugg(filtered.length > 0);
+              }}
+              onBlur={() => setTimeout(() => setShowNaturezaSugg(false), 150)}
+              className="w-full rounded-lg border border-border-custom bg-bg px-3 py-2 text-sm"
+              placeholder="Ex: Lanchonete, Churrasquinho, Bar..."
+              autoComplete="off"
+            />
+            {showNaturezaSugg && naturezaSuggestions.length > 0 && (
+              <ul className="absolute z-50 left-0 right-0 mt-1 bg-surface border border-border-custom rounded-lg shadow-lg max-h-40 overflow-y-auto">
+                {naturezaSuggestions.map((s) => (
+                  <li
+                    key={s}
+                    onMouseDown={() => {
+                      setFormPdv({ ...formPdv, natureza: s });
+                      setShowNaturezaSugg(false);
+                    }}
+                    className="px-3 py-2 text-sm cursor-pointer hover:bg-primary-50 hover:text-primary-500"
+                  >
+                    {s}
+                  </li>
+                ))}
+              </ul>
+            )}
           </div>
           <div>
             <label className="block text-sm font-medium mb-1">Contato</label>

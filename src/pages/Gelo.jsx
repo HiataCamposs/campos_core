@@ -1531,7 +1531,8 @@ export default function Gelo() {
               <div className="flex items-center justify-between mb-1">
                 <label className="text-sm font-medium">Ação</label>
                 <p className="text-xs text-text-disabled">
-                  Estoque: <span className="font-medium">{movModal.estoque}</span>
+                  Estoque:{" "}
+                  <span className="font-medium">{movModal.estoque}</span>
                   {movForm.quantidade && (
                     <>
                       {" → "}
@@ -1620,80 +1621,78 @@ export default function Gelo() {
                   className="bg-surface-alt rounded-lg px-3 py-2"
                 >
                   <div className="flex items-center justify-between gap-2">
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 text-sm">
-                          <span
-                            className={`font-semibold ${Number(log.quantidade) < 0 ? "text-error" : "text-green-600"}`}
-                          >
-                            {Number(log.quantidade) < 0 ? "" : "+"}
-                            {log.quantidade}
-                          </span>
-                          <span className="text-text-disabled text-xs">
-                            {log.estoque_antes} → {log.estoque_depois}
-                          </span>
-                        </div>
-                        <p className="text-[10px] text-text-disabled mt-0.5">
-                          {log.data
-                            ? new Date(
-                                log.data + "T00:00:00",
-                              ).toLocaleDateString("pt-BR")
-                            : "—"}
-                          {log.observacao && <> · {log.observacao}</>}
-                          {log.valor_unitario != null && (
-                            <>
-                              {" "}
-                              · R${" "}
-                              {Number(log.valor_unitario)
-                                .toFixed(2)
-                                .replace(".", ",")}
-                              /un
-                            </>
-                          )}
-                        </p>
-                      </div>
-                      <div className="flex items-center gap-0.5 shrink-0">
-                        <button
-                          onClick={() => {
-                            setMovModal({
-                              itemId: logModal.itemId,
-                              itemName: logModal.itemName,
-                              estoque:
-                                items.find((i) => i.id === logModal.itemId)
-                                  ?.estoque_atual ?? 0,
-                              editingLogId: log.id,
-                            });
-                            setMovForm({
-                              data: log.data || today,
-                              quantidade: String(
-                                Math.abs(Number(log.quantidade)),
-                              ),
-                              acao:
-                                Number(log.quantidade) < 0
-                                  ? "saida"
-                                  : "entrada",
-                              observacao: log.observacao || "",
-                            });
-                          }}
-                          className="p-1.5 rounded-lg hover:bg-surface text-text-disabled hover:text-primary-500 transition-colors"
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 text-sm">
+                        <span
+                          className={`font-semibold ${Number(log.quantidade) < 0 ? "text-error" : "text-green-600"}`}
                         >
-                          <Pencil size={13} />
-                        </button>
-                        <button
-                          onClick={() => {
-                            if (
-                              confirm(
-                                "Excluir esta movimentação e reverter o estoque?",
-                              )
-                            ) {
-                              deleteLog(log.id);
-                            }
-                          }}
-                          className="p-1.5 rounded-lg hover:bg-error/10 text-text-disabled hover:text-error transition-colors"
-                        >
-                          <Trash2 size={13} />
-                        </button>
+                          {Number(log.quantidade) < 0 ? "" : "+"}
+                          {log.quantidade}
+                        </span>
+                        <span className="text-text-disabled text-xs">
+                          {log.estoque_antes} → {log.estoque_depois}
+                        </span>
                       </div>
+                      <p className="text-[10px] text-text-disabled mt-0.5">
+                        {log.data
+                          ? new Date(log.data + "T00:00:00").toLocaleDateString(
+                              "pt-BR",
+                            )
+                          : "—"}
+                        {log.observacao && <> · {log.observacao}</>}
+                        {log.valor_unitario != null && (
+                          <>
+                            {" "}
+                            · R${" "}
+                            {Number(log.valor_unitario)
+                              .toFixed(2)
+                              .replace(".", ",")}
+                            /un
+                          </>
+                        )}
+                      </p>
                     </div>
+                    <div className="flex items-center gap-0.5 shrink-0">
+                      <button
+                        onClick={() => {
+                          setMovModal({
+                            itemId: logModal.itemId,
+                            itemName: logModal.itemName,
+                            estoque:
+                              items.find((i) => i.id === logModal.itemId)
+                                ?.estoque_atual ?? 0,
+                            editingLogId: log.id,
+                          });
+                          setMovForm({
+                            data: log.data || today,
+                            quantidade: String(
+                              Math.abs(Number(log.quantidade)),
+                            ),
+                            acao:
+                              Number(log.quantidade) < 0 ? "saida" : "entrada",
+                            observacao: log.observacao || "",
+                          });
+                        }}
+                        className="p-1.5 rounded-lg hover:bg-surface text-text-disabled hover:text-primary-500 transition-colors"
+                      >
+                        <Pencil size={13} />
+                      </button>
+                      <button
+                        onClick={() => {
+                          if (
+                            confirm(
+                              "Excluir esta movimentação e reverter o estoque?",
+                            )
+                          ) {
+                            deleteLog(log.id);
+                          }
+                        }}
+                        className="p-1.5 rounded-lg hover:bg-error/10 text-text-disabled hover:text-error transition-colors"
+                      >
+                        <Trash2 size={13} />
+                      </button>
+                    </div>
+                  </div>
                 </div>
               ))
             )}
