@@ -316,7 +316,7 @@ export default function Reposicao() {
       supabase
         .from("revenda_mov_saidas")
         .select(
-          "pdv_id, natureza_id, data, quantidade, valor_venda_unitario, valor_compra_unitario, is_perda",
+          "id, pdv_id, data, is_perda, revenda_mov_saidas_itens(natureza_id, quantidade, valor_venda_unitario, valor_compra_unitario)",
         )
         .is("deleted_at", null)
         .eq("is_perda", false)
@@ -331,8 +331,19 @@ export default function Reposicao() {
         .select("id, nome, natureza")
         .is("deleted_at", null),
     ]);
+    // Flatten saidas: one row per item for analytics
+    const flatSaidas = (saidasData || []).flatMap((s) =>
+      (s.revenda_mov_saidas_itens || []).map((item) => ({
+        pdv_id: s.pdv_id,
+        data: s.data,
+        natureza_id: item.natureza_id,
+        quantidade: item.quantidade,
+        valor_venda_unitario: item.valor_venda_unitario,
+        valor_compra_unitario: item.valor_compra_unitario,
+      })),
+    );
     setPdvs(pdvData || []);
-    setSaidas(saidasData || []);
+    setSaidas(flatSaidas);
     setContatos(contatosData || []);
     setProdutos(prodData || []);
     setLoading(false);

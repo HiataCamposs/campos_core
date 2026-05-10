@@ -21,15 +21,15 @@ import {
   Truck,
   Pencil,
   AlertTriangle,
+  X,
 } from "lucide-react";
 
 const today = new Date().toISOString().slice(0, 10);
 
 const TABS = [
-  { key: "movimentacoes", label: "Movimentações", icon: Repeat },
-  { key: "produtos", label: "Produtos", icon: Tag },
-  { key: "fornecedores", label: "Fornecedores", icon: Truck },
-  { key: "pdvs", label: "PDVs", icon: MapPin },
+  { key: "entradas", label: "Entradas", icon: ArrowDownCircle },
+  { key: "saidas", label: "Saídas", icon: ArrowUpCircle },
+  { key: "cadastro", label: "Cadastro", icon: Package },
 ];
 
 const fmtMoney = (v) =>
@@ -92,9 +92,30 @@ function MovCard({
   const [open, setOpen] = useState(false);
   const isEntrada = mov._tipo === "entrada";
   const pdv = pdvs.find((p) => p.id === mov.pdv_id);
-  const prod = produtos.find((n) => n.id === mov.natureza_id);
   const forn = fornecedores.find((f) => f.id === mov.fornecedor_id);
   const pago = mov.status_pagamento === "pago";
+  const itens = mov.itens || [];
+
+  // Summaries
+  const totalQty = itens.reduce((s, i) => s + (i.quantidade || 0), 0);
+  const totalCompra = itens.reduce(
+    (s, i) => s + (i.quantidade || 0) * (i.valor_compra_unitario || 0),
+    0,
+  );
+  const totalVenda = itens.reduce(
+    (s, i) => s + (i.quantidade || 0) * (i.valor_venda_unitario || 0),
+    0,
+  );
+  const firstProd =
+    itens.length > 0
+      ? produtos.find((n) => n.id === itens[0].natureza_id)
+      : null;
+  const summary =
+    itens.length === 1
+      ? firstProd?.nome || "—"
+      : itens.length > 1
+        ? `${itens.length} produtos`
+        : "—";
 
   const Icon = isEntrada ? ArrowDownCircle : ArrowUpCircle;
   const colorClass = isEntrada
@@ -165,9 +186,14 @@ function MovCard({
           <p className="text-xs text-text-disabled">
             {fmtDate(mov.data)}
             {" · "}
-            {prod?.nome || "—"}
+            {summary}
             {" · "}
-            {mov.quantidade}x {fmtMoney(mov.valor_compra_unitario)}
+            {totalQty}x{" "}
+            {fmtMoney(
+              isEntrada
+                ? totalCompra / Math.max(totalQty, 1)
+                : totalVenda / Math.max(totalQty, 1),
+            )}
           </p>
         </div>
         {open ? (
@@ -179,32 +205,45 @@ function MovCard({
 
       {open && (
         <div className="border-t border-border-custom px-4 pb-3 pt-2 space-y-1.5">
+          {/* Items list */}
+          {itens.length > 0 && (
+            <div className="space-y-1">
+              <p className="text-[10px] text-text-disabled font-medium uppercase">
+                Itens
+              </p>
+              {itens.map((item, i) => {
+                const prod = produtos.find((n) => n.id === item.natureza_id);
+                return (
+                  <div
+                    key={i}
+                    className="flex items-center justify-between text-xs bg-surface-alt rounded-lg px-2.5 py-1.5"
+                  >
+                    <span className="text-text-primary font-medium">
+                      {prod?.nome || "—"}
+                    </span>
+                    <span className="text-text-secondary">
+                      {item.quantidade}x {fmtMoney(item.valor_compra_unitario)}
+                      {!isEntrada && item.valor_venda_unitario != null && (
+                        <> → {fmtMoney(item.valor_venda_unitario)}</>
+                      )}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
           <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
-            <span className="text-text-disabled">Produto</span>
-            <span className="text-text-primary font-medium">
-              {prod?.nome || "—"}
-            </span>
-            <span className="text-text-disabled">Quantidade</span>
-            <span className="text-text-primary font-medium">
-              {mov.quantidade}
-            </span>
-            <span className="text-text-disabled">Compra unit.</span>
-            <span className="text-text-primary font-medium">
-              {fmtMoney(mov.valor_compra_unitario)}
-            </span>
+            <span className="text-text-disabled">Qtd total</span>
+            <span className="text-text-primary font-medium">{totalQty}</span>
             <span className="text-text-disabled">Compra total</span>
             <span className="text-text-primary font-medium">
-              {fmtMoney(mov.valor_compra_total)}
+              {fmtMoney(totalCompra)}
             </span>
             {!isEntrada && (
               <>
-                <span className="text-text-disabled">Venda unit.</span>
-                <span className="text-text-primary font-medium">
-                  {fmtMoney(mov.valor_venda_unitario)}
-                </span>
                 <span className="text-text-disabled">Venda total</span>
                 <span className="text-text-primary font-medium">
-                  {fmtMoney(mov.valor_venda_total)}
+                  {fmtMoney(totalVenda)}
                 </span>
                 <span className="text-text-disabled">Acerto</span>
                 <span className="text-text-primary font-medium">
@@ -283,7 +322,8 @@ function MovCard({
 export default function Revenda() {
   const { user } = useAuth();
   const { setTabs } = useBottomTabs();
-  const [tab, setTab] = useState("movimentacoes");
+  const [tab, setTab] = useState("saidas");
+  const [cadastroSub, setCadastroSub] = useState(null);
   const [loading, setLoading] = useState(true);
   const [modal, setModal] = useState(null);
   const [saving, setSaving] = useState(false);
@@ -301,7 +341,6 @@ export default function Revenda() {
   const [fornecedores, setFornecedores] = useState([]);
   const [pdvs, setPdvs] = useState([]);
   const [movimentacoes, setMovimentacoes] = useState([]);
-  const [filtroMov, setFiltroMov] = useState("todas");
 
   // Forms
   const [formNatureza, setFormNatureza] = useState({ nome: "", natureza: "" });
@@ -337,21 +376,23 @@ export default function Revenda() {
   const [formEntrada, setFormEntrada] = useState({
     data: today,
     fornecedor_id: "",
-    natureza_id: "",
-    quantidade: "",
-    valor_compra_unitario: "",
     nota_fiscal: "",
     observacao: "",
+    itens: [{ natureza_id: "", quantidade: "", valor_compra_unitario: "" }],
   });
   const [formSaida, setFormSaida] = useState({
     data: today,
     pdv_id: "",
-    natureza_id: "",
-    quantidade: "",
-    valor_compra_unitario: "",
-    valor_venda_unitario: "",
     valor_acerto: "",
     observacao: "",
+    itens: [
+      {
+        natureza_id: "",
+        quantidade: "",
+        valor_compra_unitario: "",
+        valor_venda_unitario: "",
+      },
+    ],
   });
 
   // ── Fetch ──
@@ -447,26 +488,24 @@ export default function Revenda() {
 
   const fetchMovimentacoes = useCallback(async () => {
     const fetchEntradas =
-      filtroMov === "saidas" || filtroMov === "pendentes"
+      tab === "saidas"
         ? Promise.resolve({ data: [] })
         : supabase
             .from("revenda_mov_entradas")
-            .select("*")
+            .select("*, revenda_mov_entradas_itens(*)")
             .is("deleted_at", null)
             .order("data", { ascending: false })
             .limit(100);
     const fetchSaidas =
-      filtroMov === "entradas"
+      tab === "entradas"
         ? Promise.resolve({ data: [] })
         : (() => {
             let q = supabase
               .from("revenda_mov_saidas")
-              .select("*")
+              .select("*, revenda_mov_saidas_itens(*)")
               .is("deleted_at", null)
               .order("data", { ascending: false })
               .limit(100);
-            if (filtroMov === "pendentes")
-              q = q.eq("status_pagamento", "pendente");
             return q;
           })();
     const [{ data: entradas }, { data: saidas }] = await Promise.all([
@@ -476,17 +515,19 @@ export default function Revenda() {
     const all = [
       ...(entradas || []).map((e) => ({
         ...e,
+        itens: e.revenda_mov_entradas_itens || [],
         _tipo: "entrada",
         _table: "revenda_mov_entradas",
       })),
       ...(saidas || []).map((s) => ({
         ...s,
+        itens: s.revenda_mov_saidas_itens || [],
         _tipo: "saida",
         _table: "revenda_mov_saidas",
       })),
     ].sort((a, b) => (b.data || "").localeCompare(a.data || ""));
     setMovimentacoes(all);
-  }, [filtroMov]);
+  }, [tab]);
 
   const fetchAll = useCallback(async () => {
     setLoading(true);
@@ -510,7 +551,10 @@ export default function Revenda() {
         {TABS.map((t) => (
           <button
             key={t.key}
-            onClick={() => setTab(t.key)}
+            onClick={() => {
+              setTab(t.key);
+              setCadastroSub(null);
+            }}
             className={`flex flex-col items-center text-[10px] gap-0.5 ${tab === t.key ? "text-primary-500 font-semibold" : "text-text-secondary"}`}
           >
             <t.icon size={20} />
@@ -729,22 +773,43 @@ export default function Revenda() {
     setSaving(true);
     const payload = {
       data: formEntrada.data,
-      natureza_id: formEntrada.natureza_id || null,
-      quantidade: Number(formEntrada.quantidade),
-      valor_compra_unitario: Number(formEntrada.valor_compra_unitario) || null,
       fornecedor_id: formEntrada.fornecedor_id || null,
       nota_fiscal: formEntrada.nota_fiscal || null,
       observacao: formEntrada.observacao || null,
     };
+    let movId = editingMovId;
     if (editingMovId) {
       await supabase
         .from("revenda_mov_entradas")
         .update(payload)
         .eq("id", editingMovId);
-    } else {
+      // Delete old items and re-insert
       await supabase
+        .from("revenda_mov_entradas_itens")
+        .delete()
+        .eq("mov_id", editingMovId);
+    } else {
+      const { data: inserted } = await supabase
         .from("revenda_mov_entradas")
-        .insert({ ...payload, user_id: user.id });
+        .insert({ ...payload, user_id: user.id })
+        .select("id")
+        .single();
+      movId = inserted?.id;
+    }
+    // Insert items
+    if (movId) {
+      const itensPayload = formEntrada.itens
+        .filter((i) => i.natureza_id && i.quantidade)
+        .map((i) => ({
+          mov_id: movId,
+          natureza_id: i.natureza_id,
+          quantidade: Number(i.quantidade),
+          valor_compra_unitario: Number(i.valor_compra_unitario) || null,
+          user_id: user.id,
+        }));
+      if (itensPayload.length > 0) {
+        await supabase.from("revenda_mov_entradas_itens").insert(itensPayload);
+      }
     }
     setSaving(false);
     setModal(null);
@@ -755,48 +820,65 @@ export default function Revenda() {
 
   const handleSaveSaida = async (e, forcePerda) => {
     e?.preventDefault?.();
-    const qty = Number(formSaida.quantidade);
+    const totalQty = formSaida.itens.reduce(
+      (s, i) => s + Number(i.quantidade || 0),
+      0,
+    );
 
     // Se quantidade negativa e ainda não decidiu: perguntar
-    if (qty < 0 && forcePerda === undefined) {
+    if (totalQty < 0 && forcePerda === undefined) {
       setPerdaPrompt(true);
       return;
     }
 
     setSaving(true);
     const isPerda = forcePerda === true;
-    const absQty = Math.abs(qty);
-    const vc = Number(formSaida.valor_compra_unitario) || null;
-    const vv = Number(formSaida.valor_venda_unitario) || null;
+    const totalVenda = formSaida.itens.reduce(
+      (s, i) =>
+        s +
+        Math.abs(Number(i.quantidade || 0)) *
+          Number(i.valor_venda_unitario || 0),
+      0,
+    );
     const acerto =
       formSaida.valor_acerto !== ""
         ? Number(formSaida.valor_acerto)
-        : vv && qty
-          ? vv * Math.abs(qty)
-          : null;
+        : totalVenda || null;
 
-    if (qty < 0 && !isPerda && !editingMovId) {
+    if (totalQty < 0 && !isPerda && !editingMovId) {
       // Devolução → criar ENTRADA com quantidade positiva
-      await supabase.from("revenda_mov_entradas").insert({
-        data: formSaida.data,
-        natureza_id: formSaida.natureza_id || null,
-        quantidade: absQty,
-        valor_compra_unitario: vc,
-        fornecedor_id: null,
-        observacao: formSaida.observacao
-          ? `Devolução: ${formSaida.observacao}`
-          : "Devolução de PDV",
-        user_id: user.id,
-      });
+      const { data: inserted } = await supabase
+        .from("revenda_mov_entradas")
+        .insert({
+          data: formSaida.data,
+          observacao: formSaida.observacao
+            ? `Devolução: ${formSaida.observacao}`
+            : "Devolução de PDV",
+          user_id: user.id,
+        })
+        .select("id")
+        .single();
+      if (inserted?.id) {
+        const itensPayload = formSaida.itens
+          .filter((i) => i.natureza_id && i.quantidade)
+          .map((i) => ({
+            mov_id: inserted.id,
+            natureza_id: i.natureza_id,
+            quantidade: Math.abs(Number(i.quantidade)),
+            valor_compra_unitario: Number(i.valor_compra_unitario) || null,
+            user_id: user.id,
+          }));
+        if (itensPayload.length > 0) {
+          await supabase
+            .from("revenda_mov_entradas_itens")
+            .insert(itensPayload);
+        }
+      }
     } else {
       // Normal ou perda
       const payload = {
         data: formSaida.data,
         pdv_id: formSaida.pdv_id || null,
-        natureza_id: formSaida.natureza_id || null,
-        quantidade: isPerda ? absQty : qty,
-        valor_compra_unitario: vc,
-        valor_venda_unitario: isPerda ? null : vv,
         valor_acerto: isPerda ? null : acerto,
         observacao: isPerda
           ? formSaida.observacao
@@ -805,15 +887,42 @@ export default function Revenda() {
           : formSaida.observacao || null,
         is_perda: isPerda,
       };
+      let movId = editingMovId;
       if (editingMovId) {
         await supabase
           .from("revenda_mov_saidas")
           .update(payload)
           .eq("id", editingMovId);
-      } else {
         await supabase
+          .from("revenda_mov_saidas_itens")
+          .delete()
+          .eq("mov_id", editingMovId);
+      } else {
+        const { data: inserted } = await supabase
           .from("revenda_mov_saidas")
-          .insert({ ...payload, user_id: user.id });
+          .insert({ ...payload, user_id: user.id })
+          .select("id")
+          .single();
+        movId = inserted?.id;
+      }
+      if (movId) {
+        const itensPayload = formSaida.itens
+          .filter((i) => i.natureza_id && i.quantidade)
+          .map((i) => ({
+            mov_id: movId,
+            natureza_id: i.natureza_id,
+            quantidade: isPerda
+              ? Math.abs(Number(i.quantidade))
+              : Number(i.quantidade),
+            valor_compra_unitario: Number(i.valor_compra_unitario) || null,
+            valor_venda_unitario: isPerda
+              ? null
+              : Number(i.valor_venda_unitario) || null,
+            user_id: user.id,
+          }));
+        if (itensPayload.length > 0) {
+          await supabase.from("revenda_mov_saidas_itens").insert(itensPayload);
+        }
       }
     }
     setSaving(false);
@@ -946,11 +1055,15 @@ export default function Revenda() {
     setFormEntrada({
       data: today,
       fornecedor_id: fornecedores[0]?.id ?? "",
-      natureza_id: naturezas[0]?.id ?? "",
-      quantidade: "",
-      valor_compra_unitario: "",
       nota_fiscal: "",
       observacao: "",
+      itens: [
+        {
+          natureza_id: naturezas[0]?.id ?? "",
+          quantidade: "",
+          valor_compra_unitario: "",
+        },
+      ],
     });
     setModal("entrada");
   };
@@ -961,12 +1074,16 @@ export default function Revenda() {
     setFormSaida({
       data: today,
       pdv_id: pdvs[0]?.id ?? "",
-      natureza_id: naturezas[0]?.id ?? "",
-      quantidade: "",
-      valor_compra_unitario: "",
-      valor_venda_unitario: "",
       valor_acerto: "",
       observacao: "",
+      itens: [
+        {
+          natureza_id: naturezas[0]?.id ?? "",
+          quantidade: "",
+          valor_compra_unitario: "",
+          valor_venda_unitario: "",
+        },
+      ],
     });
     setModal("saida");
   };
@@ -978,23 +1095,42 @@ export default function Revenda() {
       setFormEntrada({
         data: m.data || today,
         fornecedor_id: m.fornecedor_id || "",
-        natureza_id: m.natureza_id || "",
-        quantidade: m.quantidade?.toString() || "",
-        valor_compra_unitario: m.valor_compra_unitario?.toString() || "",
         nota_fiscal: m.nota_fiscal || "",
         observacao: m.observacao || "",
+        itens:
+          (m.itens || []).length > 0
+            ? m.itens.map((i) => ({
+                natureza_id: i.natureza_id || "",
+                quantidade: i.quantidade?.toString() || "",
+                valor_compra_unitario:
+                  i.valor_compra_unitario?.toString() || "",
+              }))
+            : [{ natureza_id: "", quantidade: "", valor_compra_unitario: "" }],
       });
       setModal("entrada");
     } else {
       setFormSaida({
         data: m.data || today,
         pdv_id: m.pdv_id || "",
-        natureza_id: m.natureza_id || "",
-        quantidade: m.quantidade?.toString() || "",
-        valor_compra_unitario: m.valor_compra_unitario?.toString() || "",
-        valor_venda_unitario: m.valor_venda_unitario?.toString() || "",
         valor_acerto: m.valor_acerto?.toString() || "",
         observacao: m.observacao || "",
+        itens:
+          (m.itens || []).length > 0
+            ? m.itens.map((i) => ({
+                natureza_id: i.natureza_id || "",
+                quantidade: i.quantidade?.toString() || "",
+                valor_compra_unitario:
+                  i.valor_compra_unitario?.toString() || "",
+                valor_venda_unitario: i.valor_venda_unitario?.toString() || "",
+              }))
+            : [
+                {
+                  natureza_id: "",
+                  quantidade: "",
+                  valor_compra_unitario: "",
+                  valor_venda_unitario: "",
+                },
+              ],
       });
       setModal("saida");
     }
@@ -1011,36 +1147,37 @@ export default function Revenda() {
           <h1 className="text-xl font-bold text-text-primary">Revenda</h1>
         </div>
         <div className="flex gap-2">
-          {tab === "movimentacoes" ? (
-            <>
-              <button
-                onClick={openAddEntrada}
-                className="flex items-center gap-1.5 border border-success/50 text-success hover:bg-success/5 text-sm font-medium rounded-lg px-3 py-2 transition-colors"
-              >
-                <ArrowDownCircle size={16} /> Entrada
-              </button>
-              <button
-                onClick={openAddSaida}
-                className="flex items-center gap-1.5 bg-primary-500 hover:bg-primary-600 text-white text-sm font-medium rounded-lg px-3 py-2 transition-colors"
-              >
-                <ArrowUpCircle size={16} /> Saída
-              </button>
-            </>
-          ) : (
+          {tab === "entradas" && (
+            <button
+              onClick={openAddEntrada}
+              className="flex items-center gap-1.5 bg-success hover:bg-success/90 text-white text-sm font-medium rounded-lg px-3 py-2 transition-colors"
+            >
+              <Plus size={16} /> Entrada
+            </button>
+          )}
+          {tab === "saidas" && (
+            <button
+              onClick={openAddSaida}
+              className="flex items-center gap-1.5 bg-primary-500 hover:bg-primary-600 text-white text-sm font-medium rounded-lg px-3 py-2 transition-colors"
+            >
+              <Plus size={16} /> Saída
+            </button>
+          )}
+          {tab === "cadastro" && cadastroSub && (
             <button
               onClick={
-                tab === "produtos"
+                cadastroSub === "produtos"
                   ? openAddNatureza
-                  : tab === "fornecedores"
+                  : cadastroSub === "fornecedores"
                     ? openAddFornecedor
                     : openAddPdv
               }
               className="flex items-center gap-1.5 bg-primary-500 hover:bg-primary-600 text-white text-sm font-medium rounded-lg px-3 py-2 transition-colors"
             >
               <Plus size={16} />{" "}
-              {tab === "produtos"
+              {cadastroSub === "produtos"
                 ? "Produto"
-                : tab === "fornecedores"
+                : cadastroSub === "fornecedores"
                   ? "Fornecedor"
                   : "PDV"}
             </button>
@@ -1053,26 +1190,14 @@ export default function Revenda() {
         {TABS.map((t) => (
           <button
             key={t.key}
-            onClick={() => setTab(t.key)}
+            onClick={() => {
+              setTab(t.key);
+              setCadastroSub(null);
+            }}
             className={`flex-1 flex items-center justify-center gap-1.5 text-sm font-medium rounded-lg py-2 transition-colors ${tab === t.key ? "bg-surface text-primary-500 shadow-sm" : "text-text-secondary hover:text-text-primary"}`}
           >
             <t.icon size={15} />
             <span className="hidden sm:inline">{t.label}</span>
-          </button>
-        ))}
-      </div>
-
-      {/* Filtros movimentação */}
-      <div
-        className={`flex gap-2 flex-wrap ${tab !== "movimentacoes" ? "hidden" : ""}`}
-      >
-        {["todas", "entradas", "saidas", "pendentes"].map((f) => (
-          <button
-            key={f}
-            onClick={() => setFiltroMov(f)}
-            className={`text-xs font-medium rounded-full px-3 py-1.5 border transition-colors capitalize ${filtroMov === f ? "bg-primary-500 text-white border-primary-500" : "border-border-custom text-text-secondary hover:bg-surface-alt"}`}
-          >
-            {f === "saidas" ? "saídas" : f}
           </button>
         ))}
       </div>
@@ -1082,170 +1207,229 @@ export default function Revenda() {
         <div className="flex justify-center py-12">
           <div className="animate-spin h-8 w-8 border-3 border-primary-500 border-t-transparent rounded-full" />
         </div>
-      ) : tab === "produtos" ? (
-        naturezas.length === 0 ? (
-          <div className="bg-surface rounded-2xl border border-border-custom p-8 text-center">
-            <p className="text-text-secondary">
-              Cadastre seus produtos (ex: Picolé - Fruta no Palito, Gelo,
-              Cachaça).
-            </p>
-          </div>
-        ) : (
-          <div className="space-y-2">
-            {naturezas.map((n) => (
-              <ProdutoCard
-                key={n.id}
-                produto={n}
-                onEdit={openEditNatureza}
-                onDelete={(id) => confirmDelete(id, "revenda_naturezas")}
-              />
-            ))}
-          </div>
-        )
-      ) : tab === "fornecedores" ? (
-        fornecedores.length === 0 ? (
-          <div className="bg-surface rounded-2xl border border-border-custom p-8 text-center">
-            <p className="text-text-secondary">
-              Cadastre seus fornecedores (distribuidoras, fábricas, etc).
-            </p>
-          </div>
-        ) : (
-          <div className="space-y-2">
-            {fornecedores.map((f) => (
-              <div
-                key={f.id}
-                onClick={() => openEditFornecedor(f)}
-                className="bg-surface rounded-xl border border-border-custom p-4 flex items-center justify-between cursor-pointer hover:bg-surface-alt/50 transition-colors"
+      ) : tab === "cadastro" ? (
+        !cadastroSub ? (
+          /* Cadastro menu */
+          <div className="space-y-3">
+            {[
+              {
+                key: "produtos",
+                label: "Produtos",
+                desc: `${naturezas.length} cadastrados`,
+                icon: Tag,
+                color: "text-accent-500",
+                bg: "bg-accent-50",
+              },
+              {
+                key: "fornecedores",
+                label: "Fornecedores",
+                desc: `${fornecedores.length} cadastrados`,
+                icon: Truck,
+                color: "text-accent-500",
+                bg: "bg-accent-50",
+              },
+              {
+                key: "pdvs",
+                label: "Pontos de Venda",
+                desc: `${pdvs.length} cadastrados`,
+                icon: MapPin,
+                color: "text-primary-500",
+                bg: "bg-primary-50",
+              },
+            ].map((item) => (
+              <button
+                key={item.key}
+                onClick={() => setCadastroSub(item.key)}
+                className="w-full bg-surface rounded-xl border border-border-custom p-4 flex items-center gap-3 text-left hover:bg-surface-alt/50 transition-colors"
               >
-                <div className="flex items-center gap-3 min-w-0 flex-1">
-                  <div className="h-9 w-9 shrink-0 rounded-lg bg-accent-50 flex items-center justify-center">
-                    <Truck className="text-accent-500" size={16} />
-                  </div>
-                  <div className="min-w-0">
-                    <p className="font-semibold text-sm truncate">{f.nome}</p>
-                    {(f.contato_tipo || f.contato_nome || f.contato) && (
-                      <p className="text-xs text-text-disabled truncate">
-                        {[f.contato_tipo, f.contato_nome, f.contato]
-                          .filter(Boolean)
-                          .join(" · ")}
-                      </p>
-                    )}
-                    {(f.bairro || f.cidade) && (
-                      <p className="text-xs text-text-disabled truncate">
-                        {[f.bairro, f.cidade].filter(Boolean).join(" · ")}
-                      </p>
-                    )}
-                    {!f.contato_tipo &&
-                      !f.contato_nome &&
-                      !f.contato &&
-                      !f.bairro &&
-                      !f.cidade && (
-                        <p className="text-xs text-text-disabled">
-                          Sem detalhes
-                        </p>
-                      )}
-                  </div>
+                <div
+                  className={`h-10 w-10 rounded-xl flex items-center justify-center shrink-0 ${item.bg}`}
+                >
+                  <item.icon className={item.color} size={18} />
                 </div>
-                <div className="flex items-center gap-1">
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      openEditFornecedor(f);
-                    }}
-                    className="p-2 rounded-lg hover:bg-surface-alt text-text-disabled hover:text-primary-500 transition-colors"
-                  >
-                    <Pencil size={15} />
-                  </button>
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      confirmDelete(f.id, "revenda_fornecedores");
-                    }}
-                    className="p-2 rounded-lg hover:bg-surface-alt text-text-disabled hover:text-error transition-colors"
-                  >
-                    <Trash2 size={15} />
-                  </button>
+                <div>
+                  <p className="font-semibold text-sm">{item.label}</p>
+                  <p className="text-xs text-text-disabled">{item.desc}</p>
                 </div>
-              </div>
+                <ChevronDown
+                  size={16}
+                  className="ml-auto text-text-disabled -rotate-90"
+                />
+              </button>
             ))}
           </div>
-        )
-      ) : tab === "pdvs" ? (
-        pdvs.length === 0 ? (
-          <div className="bg-surface rounded-2xl border border-border-custom p-8 text-center">
-            <p className="text-text-secondary">
-              Cadastre seus pontos de venda.
-            </p>
+        ) : cadastroSub === "produtos" ? (
+          <div className="space-y-3">
+            {naturezas.length === 0 ? (
+              <div className="bg-surface rounded-2xl border border-border-custom p-8 text-center">
+                <p className="text-text-secondary">
+                  Cadastre seus produtos (ex: Picolé - Fruta no Palito, Gelo,
+                  Cachaça).
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {naturezas.map((n) => (
+                  <ProdutoCard
+                    key={n.id}
+                    produto={n}
+                    onEdit={openEditNatureza}
+                    onDelete={(id) => confirmDelete(id, "revenda_naturezas")}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
+        ) : cadastroSub === "fornecedores" ? (
+          <div className="space-y-3">
+            {fornecedores.length === 0 ? (
+              <div className="bg-surface rounded-2xl border border-border-custom p-8 text-center">
+                <p className="text-text-secondary">
+                  Cadastre seus fornecedores (distribuidoras, fábricas, etc).
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {fornecedores.map((f) => (
+                  <div
+                    key={f.id}
+                    onClick={() => openEditFornecedor(f)}
+                    className="bg-surface rounded-xl border border-border-custom p-4 flex items-center justify-between cursor-pointer hover:bg-surface-alt/50 transition-colors"
+                  >
+                    <div className="flex items-center gap-3 min-w-0 flex-1">
+                      <div className="h-9 w-9 shrink-0 rounded-lg bg-accent-50 flex items-center justify-center">
+                        <Truck className="text-accent-500" size={16} />
+                      </div>
+                      <div className="min-w-0">
+                        <p className="font-semibold text-sm truncate">
+                          {f.nome}
+                        </p>
+                        {(f.contato_tipo || f.contato_nome || f.contato) && (
+                          <p className="text-xs text-text-disabled truncate">
+                            {[f.contato_tipo, f.contato_nome, f.contato]
+                              .filter(Boolean)
+                              .join(" · ")}
+                          </p>
+                        )}
+                        {(f.bairro || f.cidade) && (
+                          <p className="text-xs text-text-disabled truncate">
+                            {[f.bairro, f.cidade].filter(Boolean).join(" · ")}
+                          </p>
+                        )}
+                        {!f.contato_tipo &&
+                          !f.contato_nome &&
+                          !f.contato &&
+                          !f.bairro &&
+                          !f.cidade && (
+                            <p className="text-xs text-text-disabled">
+                              Sem detalhes
+                            </p>
+                          )}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          openEditFornecedor(f);
+                        }}
+                        className="p-2 rounded-lg hover:bg-surface-alt text-text-disabled hover:text-primary-500 transition-colors"
+                      >
+                        <Pencil size={15} />
+                      </button>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          confirmDelete(f.id, "revenda_fornecedores");
+                        }}
+                        className="p-2 rounded-lg hover:bg-surface-alt text-text-disabled hover:text-error transition-colors"
+                      >
+                        <Trash2 size={15} />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         ) : (
-          <div className="space-y-2">
-            {pdvs.map((p) => (
-              <div
-                key={p.id}
-                onClick={() => openEditPdv(p)}
-                className="bg-surface rounded-xl border border-border-custom p-4 flex items-center justify-between cursor-pointer hover:bg-surface-alt/50 transition-colors"
-              >
-                <div className="flex items-center gap-3 min-w-0 flex-1">
-                  <div className="h-9 w-9 shrink-0 rounded-lg bg-primary-50 flex items-center justify-center">
-                    <Store className="text-primary-500" size={16} />
-                  </div>
-                  <div className="min-w-0">
-                    <p className="font-semibold text-sm truncate">{p.nome}</p>
-                    {(p.contato_tipo || p.contato_nome || p.contato) && (
-                      <p className="text-xs text-text-disabled truncate">
-                        {[p.contato_tipo, p.contato_nome, p.contato]
-                          .filter(Boolean)
-                          .join(" · ")}
-                      </p>
-                    )}
-                    {(p.bairro || p.cidade) && (
-                      <p className="text-xs text-text-disabled truncate">
-                        {[p.bairro, p.cidade].filter(Boolean).join(" · ")}
-                      </p>
-                    )}
-                    {!p.contato_tipo &&
-                      !p.contato_nome &&
-                      !p.contato &&
-                      !p.bairro &&
-                      !p.cidade && (
-                        <p className="text-xs text-text-disabled">
-                          Sem detalhes
-                        </p>
-                      )}
-                  </div>
-                </div>
-                <div className="flex items-center gap-1">
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      openEditPdv(p);
-                    }}
-                    className="p-2 rounded-lg hover:bg-surface-alt text-text-disabled hover:text-primary-500 transition-colors"
-                  >
-                    <Pencil size={15} />
-                  </button>
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      confirmDelete(p.id, "revenda_pdvs");
-                    }}
-                    className="p-2 rounded-lg hover:bg-surface-alt text-text-disabled hover:text-error transition-colors"
-                  >
-                    <Trash2 size={15} />
-                  </button>
-                </div>
+          /* cadastroSub === "pdvs" */
+          <div className="space-y-3">
+            {pdvs.length === 0 ? (
+              <div className="bg-surface rounded-2xl border border-border-custom p-8 text-center">
+                <p className="text-text-secondary">
+                  Cadastre seus pontos de venda.
+                </p>
               </div>
-            ))}
+            ) : (
+              <div className="space-y-2">
+                {pdvs.map((p) => (
+                  <div
+                    key={p.id}
+                    onClick={() => openEditPdv(p)}
+                    className="bg-surface rounded-xl border border-border-custom p-4 flex items-center justify-between cursor-pointer hover:bg-surface-alt/50 transition-colors"
+                  >
+                    <div className="flex items-center gap-3 min-w-0 flex-1">
+                      <div className="h-9 w-9 shrink-0 rounded-lg bg-primary-50 flex items-center justify-center">
+                        <Store className="text-primary-500" size={16} />
+                      </div>
+                      <div className="min-w-0">
+                        <p className="font-semibold text-sm truncate">
+                          {p.nome}
+                        </p>
+                        {(p.contato_tipo || p.contato_nome || p.contato) && (
+                          <p className="text-xs text-text-disabled truncate">
+                            {[p.contato_tipo, p.contato_nome, p.contato]
+                              .filter(Boolean)
+                              .join(" · ")}
+                          </p>
+                        )}
+                        {(p.bairro || p.cidade) && (
+                          <p className="text-xs text-text-disabled truncate">
+                            {[p.bairro, p.cidade].filter(Boolean).join(" · ")}
+                          </p>
+                        )}
+                        {!p.contato_tipo &&
+                          !p.contato_nome &&
+                          !p.contato &&
+                          !p.bairro &&
+                          !p.cidade && (
+                            <p className="text-xs text-text-disabled">
+                              Sem detalhes
+                            </p>
+                          )}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          openEditPdv(p);
+                        }}
+                        className="p-2 rounded-lg hover:bg-surface-alt text-text-disabled hover:text-primary-500 transition-colors"
+                      >
+                        <Pencil size={15} />
+                      </button>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          confirmDelete(p.id, "revenda_pdvs");
+                        }}
+                        className="p-2 rounded-lg hover:bg-surface-alt text-text-disabled hover:text-error transition-colors"
+                      >
+                        <Trash2 size={15} />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         )
       ) : movimentacoes.length === 0 ? (
         <div className="bg-surface rounded-2xl border border-border-custom p-8 text-center">
           <p className="text-text-secondary">
-            Nenhuma movimentação
-            {filtroMov !== "todas"
-              ? ` (${filtroMov === "saidas" ? "saídas" : filtroMov})`
-              : ""}{" "}
-            encontrada.
+            Nenhuma {tab === "entradas" ? "entrada" : "saída"} encontrada.
           </p>
         </div>
       ) : (
@@ -1826,62 +2010,140 @@ export default function Revenda() {
               ))}
             </select>
           </div>
+
+          {/* Itens - Tabela */}
           <div>
-            <label className="block text-sm font-medium mb-1">Produto</label>
-            <select
-              required
-              value={formEntrada.natureza_id}
-              onChange={(e) =>
-                setFormEntrada({
-                  ...formEntrada,
-                  natureza_id: e.target.value,
-                })
-              }
-              className="w-full rounded-lg border border-border-custom bg-bg px-3 py-2 text-sm"
-            >
-              <option value="">Selecione...</option>
-              {naturezas.map((n) => (
-                <option key={n.id} value={n.id}>
-                  {n.nome}
-                </option>
+            <div className="flex items-center justify-between mb-1">
+              <label className="block text-sm font-medium">Itens</label>
+              <button
+                type="button"
+                onClick={() =>
+                  setFormEntrada({
+                    ...formEntrada,
+                    itens: [
+                      ...formEntrada.itens,
+                      {
+                        natureza_id: naturezas[0]?.id ?? "",
+                        quantidade: "",
+                        valor_compra_unitario: "",
+                      },
+                    ],
+                  })
+                }
+                className="flex items-center gap-1 text-xs text-primary-500 font-medium hover:underline"
+              >
+                <Plus size={12} /> Adicionar
+              </button>
+            </div>
+            <div className="border border-border-custom rounded-lg overflow-hidden">
+              {/* Header */}
+              <div className="grid grid-cols-[2fr_50px_70px_28px] bg-surface-alt px-2 py-1.5 text-[10px] font-semibold text-text-disabled uppercase tracking-wider">
+                <span>Produto</span>
+                <span className="text-center">Qtd</span>
+                <span className="text-center">R$ compra</span>
+                <span></span>
+              </div>
+              {/* Rows */}
+              {formEntrada.itens.map((item, idx) => (
+                <div
+                  key={idx}
+                  className="grid grid-cols-[2fr_50px_70px_28px] items-center px-2 py-1.5 border-t border-border-custom gap-1"
+                >
+                  <select
+                    required
+                    value={item.natureza_id}
+                    onChange={(e) => {
+                      const itens = [...formEntrada.itens];
+                      itens[idx] = {
+                        ...itens[idx],
+                        natureza_id: e.target.value,
+                      };
+                      setFormEntrada({ ...formEntrada, itens });
+                    }}
+                    className="w-full rounded border border-border-custom bg-bg px-1.5 py-1.5 text-xs"
+                  >
+                    <option value="">...</option>
+                    {naturezas.map((n) => (
+                      <option key={n.id} value={n.id}>
+                        {n.nome}
+                      </option>
+                    ))}
+                  </select>
+                  <input
+                    type="number"
+                    required
+                    value={item.quantidade}
+                    onChange={(e) => {
+                      const itens = [...formEntrada.itens];
+                      itens[idx] = {
+                        ...itens[idx],
+                        quantidade: e.target.value,
+                      };
+                      setFormEntrada({ ...formEntrada, itens });
+                    }}
+                    className="w-full rounded border border-border-custom bg-bg px-1.5 py-1.5 text-xs text-center"
+                    placeholder="0"
+                  />
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={item.valor_compra_unitario}
+                    onChange={(e) => {
+                      const itens = [...formEntrada.itens];
+                      itens[idx] = {
+                        ...itens[idx],
+                        valor_compra_unitario: e.target.value,
+                      };
+                      setFormEntrada({ ...formEntrada, itens });
+                    }}
+                    className="w-full rounded border border-border-custom bg-bg px-1.5 py-1.5 text-xs text-center"
+                    placeholder="0,00"
+                  />
+                  {formEntrada.itens.length > 1 ? (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setFormEntrada({
+                          ...formEntrada,
+                          itens: formEntrada.itens.filter((_, i) => i !== idx),
+                        })
+                      }
+                      className="p-1 rounded hover:bg-error/10 text-text-disabled hover:text-error transition-colors flex items-center justify-center"
+                    >
+                      <X size={12} />
+                    </button>
+                  ) : (
+                    <span />
+                  )}
+                </div>
               ))}
-            </select>
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-sm font-medium mb-1">Qtd</label>
-              <input
-                type="number"
-                required
-                value={formEntrada.quantidade}
-                onChange={(e) =>
-                  setFormEntrada({
-                    ...formEntrada,
-                    quantidade: e.target.value,
-                  })
-                }
-                className="w-full rounded-lg border border-border-custom bg-bg px-3 py-2 text-sm"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium mb-1">
-                R$ custo (und)
-              </label>
-              <input
-                type="number"
-                step="0.01"
-                min="0"
-                value={formEntrada.valor_compra_unitario}
-                onChange={(e) =>
-                  setFormEntrada({
-                    ...formEntrada,
-                    valor_compra_unitario: e.target.value,
-                  })
-                }
-                className="w-full rounded-lg border border-border-custom bg-bg px-3 py-2 text-sm"
-              />
+              {/* Totais */}
+              <div className="grid grid-cols-[2fr_50px_70px_28px] items-center px-2 py-1.5 border-t border-border-custom bg-surface-alt text-xs font-semibold">
+                <span className="text-text-secondary">Total</span>
+                <span className="text-center text-text-primary">
+                  {formEntrada.itens.reduce(
+                    (s, i) => s + (Number(i.quantidade) || 0),
+                    0,
+                  )}
+                </span>
+                <span className="text-center text-text-primary">
+                  {formEntrada.itens
+                    .reduce(
+                      (s, i) =>
+                        s +
+                        (Number(i.quantidade) || 0) *
+                          (Number(i.valor_compra_unitario) || 0),
+                      0,
+                    )
+                    .toFixed(2)
+                    .replace(".", ",")}
+                </span>
+                <span></span>
+              </div>
             </div>
           </div>
+
           <div>
             <label className="block text-sm font-medium mb-1">
               Nota Fiscal
@@ -1956,78 +2218,170 @@ export default function Revenda() {
               />
             </div>
           </div>
+
+          {/* Itens - Tabela */}
           <div>
-            <label className="block text-sm font-medium mb-1">Produto</label>
-            <select
-              required
-              value={formSaida.natureza_id}
-              onChange={(e) =>
-                setFormSaida({
-                  ...formSaida,
-                  natureza_id: e.target.value,
-                })
-              }
-              className="w-full rounded-lg border border-border-custom bg-bg px-3 py-2 text-sm"
-            >
-              <option value="">Selecione...</option>
-              {naturezas.map((n) => (
-                <option key={n.id} value={n.id}>
-                  {n.nome}
-                </option>
+            <div className="flex items-center justify-between mb-1">
+              <label className="block text-sm font-medium">Itens</label>
+              <button
+                type="button"
+                onClick={() =>
+                  setFormSaida({
+                    ...formSaida,
+                    itens: [
+                      ...formSaida.itens,
+                      {
+                        natureza_id: naturezas[0]?.id ?? "",
+                        quantidade: "",
+                        valor_compra_unitario: "",
+                        valor_venda_unitario: "",
+                      },
+                    ],
+                  })
+                }
+                className="flex items-center gap-1 text-xs text-primary-500 font-medium hover:underline"
+              >
+                <Plus size={12} /> Adicionar
+              </button>
+            </div>
+            <div className="border border-border-custom rounded-lg overflow-hidden">
+              {/* Header */}
+              <div className="grid grid-cols-[2fr_44px_62px_62px_28px] bg-surface-alt px-2 py-1.5 text-[10px] font-semibold text-text-disabled uppercase tracking-wider">
+                <span>Produto</span>
+                <span className="text-center">Qtd</span>
+                <span className="text-center">Compra</span>
+                <span className="text-center">Venda</span>
+                <span></span>
+              </div>
+              {/* Rows */}
+              {formSaida.itens.map((item, idx) => (
+                <div
+                  key={idx}
+                  className="grid grid-cols-[2fr_44px_62px_62px_28px] items-center px-2 py-1.5 border-t border-border-custom gap-1"
+                >
+                  <select
+                    required
+                    value={item.natureza_id}
+                    onChange={(e) => {
+                      const itens = [...formSaida.itens];
+                      itens[idx] = {
+                        ...itens[idx],
+                        natureza_id: e.target.value,
+                      };
+                      setFormSaida({ ...formSaida, itens });
+                    }}
+                    className="w-full rounded border border-border-custom bg-bg px-1.5 py-1.5 text-xs"
+                  >
+                    <option value="">...</option>
+                    {naturezas.map((n) => (
+                      <option key={n.id} value={n.id}>
+                        {n.nome}
+                      </option>
+                    ))}
+                  </select>
+                  <input
+                    type="number"
+                    required
+                    value={item.quantidade}
+                    onChange={(e) => {
+                      const itens = [...formSaida.itens];
+                      itens[idx] = {
+                        ...itens[idx],
+                        quantidade: e.target.value,
+                      };
+                      setFormSaida({ ...formSaida, itens });
+                    }}
+                    className="w-full rounded border border-border-custom bg-bg px-1.5 py-1.5 text-xs text-center"
+                    placeholder="0"
+                  />
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={item.valor_compra_unitario}
+                    onChange={(e) => {
+                      const itens = [...formSaida.itens];
+                      itens[idx] = {
+                        ...itens[idx],
+                        valor_compra_unitario: e.target.value,
+                      };
+                      setFormSaida({ ...formSaida, itens });
+                    }}
+                    className="w-full rounded border border-border-custom bg-bg px-1.5 py-1.5 text-xs text-center"
+                    placeholder="0,00"
+                  />
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={item.valor_venda_unitario}
+                    onChange={(e) => {
+                      const itens = [...formSaida.itens];
+                      itens[idx] = {
+                        ...itens[idx],
+                        valor_venda_unitario: e.target.value,
+                      };
+                      setFormSaida({ ...formSaida, itens });
+                    }}
+                    className="w-full rounded border border-border-custom bg-bg px-1.5 py-1.5 text-xs text-center"
+                    placeholder="0,00"
+                  />
+                  {formSaida.itens.length > 1 ? (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setFormSaida({
+                          ...formSaida,
+                          itens: formSaida.itens.filter((_, i) => i !== idx),
+                        })
+                      }
+                      className="p-1 rounded hover:bg-error/10 text-text-disabled hover:text-error transition-colors flex items-center justify-center"
+                    >
+                      <X size={12} />
+                    </button>
+                  ) : (
+                    <span />
+                  )}
+                </div>
               ))}
-            </select>
-          </div>
-          <div>
-            <label className="block text-sm font-medium mb-1">Quantidade</label>
-            <input
-              type="number"
-              required
-              value={formSaida.quantidade}
-              onChange={(e) =>
-                setFormSaida({ ...formSaida, quantidade: e.target.value })
-              }
-              className="w-full rounded-lg border border-border-custom bg-bg px-3 py-2 text-sm"
-              placeholder="Use negativo para devoluções (ex: -8)"
-            />
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-sm font-medium mb-1">
-                R$ compra (und)
-              </label>
-              <input
-                type="number"
-                step="0.01"
-                min="0"
-                value={formSaida.valor_compra_unitario}
-                onChange={(e) =>
-                  setFormSaida({
-                    ...formSaida,
-                    valor_compra_unitario: e.target.value,
-                  })
-                }
-                className="w-full rounded-lg border border-border-custom bg-bg px-3 py-2 text-sm"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium mb-1">
-                R$ venda (und)
-              </label>
-              <input
-                type="number"
-                step="0.01"
-                min="0"
-                value={formSaida.valor_venda_unitario}
-                onChange={(e) =>
-                  setFormSaida({
-                    ...formSaida,
-                    valor_venda_unitario: e.target.value,
-                  })
-                }
-                className="w-full rounded-lg border border-border-custom bg-bg px-3 py-2 text-sm"
-              />
+              {/* Totais */}
+              <div className="grid grid-cols-[2fr_44px_62px_62px_28px] items-center px-2 py-1.5 border-t border-border-custom bg-surface-alt text-xs font-semibold">
+                <span className="text-text-secondary">Total</span>
+                <span className="text-center text-text-primary">
+                  {formSaida.itens.reduce(
+                    (s, i) => s + (Number(i.quantidade) || 0),
+                    0,
+                  )}
+                </span>
+                <span className="text-center text-text-primary">
+                  {formSaida.itens
+                    .reduce(
+                      (s, i) =>
+                        s +
+                        (Number(i.quantidade) || 0) *
+                          (Number(i.valor_compra_unitario) || 0),
+                      0,
+                    )
+                    .toFixed(2)
+                    .replace(".", ",")}
+                </span>
+                <span className="text-center text-text-primary">
+                  {formSaida.itens
+                    .reduce(
+                      (s, i) =>
+                        s +
+                        (Number(i.quantidade) || 0) *
+                          (Number(i.valor_venda_unitario) || 0),
+                      0,
+                    )
+                    .toFixed(2)
+                    .replace(".", ",")}
+                </span>
+                <span></span>
+              </div>
             </div>
           </div>
+
           <div>
             <label className="block text-sm font-medium mb-1">
               Valor acerto
@@ -2040,7 +2394,7 @@ export default function Revenda() {
                 setFormSaida({ ...formSaida, valor_acerto: e.target.value })
               }
               className="w-full rounded-lg border border-border-custom bg-bg px-3 py-2 text-sm"
-              placeholder="Se vazio, calcula Qtd × Venda"
+              placeholder="Se vazio, calcula soma (Qtd × Venda)"
             />
           </div>
           <div>
