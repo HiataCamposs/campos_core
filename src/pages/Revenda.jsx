@@ -22,9 +22,22 @@ import {
   Pencil,
   AlertTriangle,
   X,
+  Wallet,
+  DollarSign,
 } from "lucide-react";
 
 const today = new Date().toISOString().slice(0, 10);
+
+// ── Helper: supabase mutation with error handling ──
+const dbOp = async (query, label = "Operação") => {
+  const res = await query;
+  if (res.error) {
+    console.error(`[${label}]`, res.error);
+    alert(`Erro ao ${label}: ${res.error.message}`);
+    return { ok: false, error: res.error, data: res.data };
+  }
+  return { ok: true, data: res.data };
+};
 
 const TABS = [
   { key: "entradas", label: "Entradas", icon: ArrowDownCircle },
@@ -88,6 +101,7 @@ function MovCard({
   onTogglePago,
   onEdit,
   onDelete,
+  onPagamento,
 }) {
   const [open, setOpen] = useState(false);
   const isEntrada = mov._tipo === "entrada";
@@ -119,26 +133,26 @@ function MovCard({
 
   const Icon = isEntrada ? ArrowDownCircle : ArrowUpCircle;
   const colorClass = isEntrada
-    ? "text-success"
+    ? "text-accent-500"
     : mov.is_perda
       ? "text-error"
       : pago
-        ? "text-accent-500"
-        : "text-warning";
+        ? "text-success"
+        : "text-error/70";
   const bgClass = isEntrada
-    ? "bg-success/10"
+    ? "bg-accent-50"
     : mov.is_perda
       ? "bg-error/10"
       : pago
-        ? "bg-accent-50"
-        : "bg-warning/10";
+        ? "bg-success/10"
+        : "bg-error/5";
   const borderClass = isEntrada
-    ? "border-success/30"
+    ? "border-accent-500/30"
     : mov.is_perda
       ? "border-error/30"
       : pago
-        ? "border-accent-500/30"
-        : "border-warning/30";
+        ? "border-success/30"
+        : "border-error/20";
 
   return (
     <div
@@ -155,11 +169,6 @@ function MovCard({
         </div>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
-            <span
-              className={`text-[10px] font-bold rounded px-1.5 py-0.5 uppercase ${isEntrada ? "bg-success/10 text-success" : "bg-accent-50 text-accent-600"}`}
-            >
-              {isEntrada ? "Entrada" : "Saída"}
-            </span>
             {!isEntrada && pdv && (
               <span className="text-xs font-medium text-text-primary">
                 {pdv.nome}
@@ -173,13 +182,6 @@ function MovCard({
             {!isEntrada && mov.is_perda && (
               <span className="text-[10px] font-bold rounded px-1.5 py-0.5 bg-error/10 text-error flex items-center gap-0.5">
                 <AlertTriangle size={10} /> PERDA
-              </span>
-            )}
-            {!isEntrada && !mov.is_perda && (
-              <span
-                className={`text-[10px] font-medium rounded px-1.5 py-0.5 ${pago ? "bg-success/10 text-success" : "bg-warning/10 text-warning"}`}
-              >
-                {pago ? "PAGO" : "PENDENTE"}
               </span>
             )}
           </div>
@@ -290,24 +292,12 @@ function MovCard({
                 <Trash2 size={12} /> Remover
               </button>
             </div>
-            {!isEntrada && !mov.is_perda ? (
-              <button
-                onClick={() => onTogglePago(mov.id, pago)}
-                className={`flex items-center gap-1 text-xs font-medium transition-colors ${pago ? "text-warning hover:underline" : "text-success hover:underline"}`}
-              >
-                {pago ? (
-                  <>
-                    <Clock size={12} /> Marcar pendente
-                  </>
-                ) : (
-                  <>
-                    <CheckCircle2 size={12} /> Marcar pago
-                  </>
-                )}
-              </button>
-            ) : (
-              <span />
-            )}
+            <button
+              onClick={() => onPagamento(mov)}
+              className="flex items-center gap-1 text-xs text-accent-500 hover:underline font-medium"
+            >
+              <DollarSign size={12} /> Pagamento
+            </button>
           </div>
         </div>
       )}
@@ -341,6 +331,17 @@ export default function Revenda() {
   const [fornecedores, setFornecedores] = useState([]);
   const [pdvs, setPdvs] = useState([]);
   const [movimentacoes, setMovimentacoes] = useState([]);
+  const [formasPagamento, setFormasPagamento] = useState([]);
+  const [pagamentoMov, setPagamentoMov] = useState(null);
+  const [transacoes, setTransacoes] = useState([]);
+  const [formFormaPgto, setFormFormaPgto] = useState({ nome: "" });
+  const [editingFormaPgtoId, setEditingFormaPgtoId] = useState(null);
+  const [formTransacao, setFormTransacao] = useState({
+    forma_pagamento_id: "",
+    valor: "",
+    data: today,
+    observacao: "",
+  });
 
   // Forms
   const [formNatureza, setFormNatureza] = useState({ nome: "", natureza: "" });
@@ -399,11 +400,20 @@ export default function Revenda() {
 
   const fetchNaturezas = useCallback(async () => {
     const { data } = await supabase
-      .from("revenda_naturezas")
+      .from("revenda_produtos")
       .select("*")
       .is("deleted_at", null)
       .order("nome");
     setNaturezas(data || []);
+  }, []);
+
+  const fetchFormasPagamento = useCallback(async () => {
+    const { data } = await supabase
+      .from("revenda_formas_pagamento")
+      .select("*")
+      .is("deleted_at", null)
+      .order("nome");
+    setFormasPagamento(data || []);
   }, []);
 
   const fetchFornecedores = useCallback(async () => {
@@ -536,9 +546,16 @@ export default function Revenda() {
       fetchFornecedores(),
       fetchPdvs(),
       fetchMovimentacoes(),
+      fetchFormasPagamento(),
     ]);
     setLoading(false);
-  }, [fetchNaturezas, fetchFornecedores, fetchPdvs, fetchMovimentacoes]);
+  }, [
+    fetchNaturezas,
+    fetchFornecedores,
+    fetchPdvs,
+    fetchMovimentacoes,
+    fetchFormasPagamento,
+  ]);
 
   useEffect(() => {
     fetchAll();
@@ -572,17 +589,31 @@ export default function Revenda() {
     e.preventDefault();
     setSaving(true);
     if (editingProdutoId) {
-      await supabase
-        .from("revenda_naturezas")
-        .update({
-          nome: formNatureza.nome,
-          natureza: formNatureza.natureza || null,
-        })
-        .eq("id", editingProdutoId);
+      const { ok } = await dbOp(
+        supabase
+          .from("revenda_naturezas")
+          .update({
+            nome: formNatureza.nome,
+            natureza: formNatureza.natureza || null,
+          })
+          .eq("id", editingProdutoId),
+        "salvar produto",
+      );
+      if (!ok) {
+        setSaving(false);
+        return;
+      }
     } else {
-      await supabase
-        .from("revenda_naturezas")
-        .insert({ ...formNatureza, user_id: user.id });
+      const { ok } = await dbOp(
+        supabase
+          .from("revenda_produtos")
+          .insert({ ...formNatureza, user_id: user.id }),
+        "salvar produto",
+      );
+      if (!ok) {
+        setSaving(false);
+        return;
+      }
     }
     setSaving(false);
     setModal(null);
@@ -596,23 +627,37 @@ export default function Revenda() {
     setSaving(true);
     let entidadeId = editingFornecedorId;
     if (editingFornecedorId) {
-      await supabase
-        .from("revenda_fornecedores")
-        .update({
-          nome: formFornecedor.nome,
-          observacao: formFornecedor.observacao || null,
-        })
-        .eq("id", editingFornecedorId);
+      const { ok } = await dbOp(
+        supabase
+          .from("revenda_fornecedores")
+          .update({
+            nome: formFornecedor.nome,
+            observacao: formFornecedor.observacao || null,
+          })
+          .eq("id", editingFornecedorId),
+        "salvar fornecedor",
+      );
+      if (!ok) {
+        setSaving(false);
+        return;
+      }
     } else {
-      const { data: inserted } = await supabase
-        .from("revenda_fornecedores")
-        .insert({
-          nome: formFornecedor.nome,
-          observacao: formFornecedor.observacao || null,
-          user_id: user.id,
-        })
-        .select("id")
-        .single();
+      const { ok, data: inserted } = await dbOp(
+        supabase
+          .from("revenda_fornecedores")
+          .insert({
+            nome: formFornecedor.nome,
+            observacao: formFornecedor.observacao || null,
+            user_id: user.id,
+          })
+          .select("id")
+          .single(),
+        "salvar fornecedor",
+      );
+      if (!ok) {
+        setSaving(false);
+        return;
+      }
       entidadeId = inserted?.id;
     }
     if (entidadeId) {
@@ -626,16 +671,22 @@ export default function Revenda() {
         user_id: user.id,
       };
       if (formFornecedor._contato_id) {
-        await supabase
-          .from("cadastro_contatos")
-          .update(contatoPayload)
-          .eq("id", formFornecedor._contato_id);
+        await dbOp(
+          supabase
+            .from("cadastro_contatos")
+            .update(contatoPayload)
+            .eq("id", formFornecedor._contato_id),
+          "salvar contato",
+        );
       } else if (
         formFornecedor.contato_tipo ||
         formFornecedor.contato_nome ||
         formFornecedor.contato
       ) {
-        await supabase.from("cadastro_contatos").insert(contatoPayload);
+        await dbOp(
+          supabase.from("cadastro_contatos").insert(contatoPayload),
+          "salvar contato",
+        );
       }
       // Upsert endereco
       const enderecoPayload = {
@@ -648,17 +699,23 @@ export default function Revenda() {
         user_id: user.id,
       };
       if (formFornecedor._endereco_id) {
-        await supabase
-          .from("cadastro_enderecos")
-          .update(enderecoPayload)
-          .eq("id", formFornecedor._endereco_id);
+        await dbOp(
+          supabase
+            .from("cadastro_enderecos")
+            .update(enderecoPayload)
+            .eq("id", formFornecedor._endereco_id),
+          "salvar endere\u00e7o",
+        );
       } else if (
         formFornecedor.cidade ||
         formFornecedor.bairro ||
         formFornecedor.logradouro ||
         formFornecedor.numero
       ) {
-        await supabase.from("cadastro_enderecos").insert(enderecoPayload);
+        await dbOp(
+          supabase.from("cadastro_enderecos").insert(enderecoPayload),
+          "salvar endere\u00e7o",
+        );
       }
     }
     setSaving(false);
@@ -683,25 +740,39 @@ export default function Revenda() {
     setSaving(true);
     let entidadeId = editingPdvId;
     if (editingPdvId) {
-      await supabase
-        .from("revenda_pdvs")
-        .update({
-          nome: formPdv.nome,
-          natureza: formPdv.natureza || null,
-          observacao: formPdv.observacao || null,
-        })
-        .eq("id", editingPdvId);
+      const { ok } = await dbOp(
+        supabase
+          .from("revenda_pdvs")
+          .update({
+            nome: formPdv.nome,
+            natureza: formPdv.natureza || null,
+            observacao: formPdv.observacao || null,
+          })
+          .eq("id", editingPdvId),
+        "salvar PDV",
+      );
+      if (!ok) {
+        setSaving(false);
+        return;
+      }
     } else {
-      const { data: inserted } = await supabase
-        .from("revenda_pdvs")
-        .insert({
-          nome: formPdv.nome,
-          natureza: formPdv.natureza || null,
-          observacao: formPdv.observacao || null,
-          user_id: user.id,
-        })
-        .select("id")
-        .single();
+      const { ok, data: inserted } = await dbOp(
+        supabase
+          .from("revenda_pdvs")
+          .insert({
+            nome: formPdv.nome,
+            natureza: formPdv.natureza || null,
+            observacao: formPdv.observacao || null,
+            user_id: user.id,
+          })
+          .select("id")
+          .single(),
+        "salvar PDV",
+      );
+      if (!ok) {
+        setSaving(false);
+        return;
+      }
       entidadeId = inserted?.id;
     }
     if (entidadeId) {
@@ -715,16 +786,22 @@ export default function Revenda() {
         user_id: user.id,
       };
       if (formPdv._contato_id) {
-        await supabase
-          .from("cadastro_contatos")
-          .update(contatoPayload)
-          .eq("id", formPdv._contato_id);
+        await dbOp(
+          supabase
+            .from("cadastro_contatos")
+            .update(contatoPayload)
+            .eq("id", formPdv._contato_id),
+          "salvar contato",
+        );
       } else if (
         formPdv.contato_tipo ||
         formPdv.contato_nome ||
         formPdv.contato
       ) {
-        await supabase.from("cadastro_contatos").insert(contatoPayload);
+        await dbOp(
+          supabase.from("cadastro_contatos").insert(contatoPayload),
+          "salvar contato",
+        );
       }
       // Upsert endereco
       const enderecoPayload = {
@@ -737,17 +814,23 @@ export default function Revenda() {
         user_id: user.id,
       };
       if (formPdv._endereco_id) {
-        await supabase
-          .from("cadastro_enderecos")
-          .update(enderecoPayload)
-          .eq("id", formPdv._endereco_id);
+        await dbOp(
+          supabase
+            .from("cadastro_enderecos")
+            .update(enderecoPayload)
+            .eq("id", formPdv._endereco_id),
+          "salvar endere\u00e7o",
+        );
       } else if (
         formPdv.cidade ||
         formPdv.bairro ||
         formPdv.logradouro ||
         formPdv.numero
       ) {
-        await supabase.from("cadastro_enderecos").insert(enderecoPayload);
+        await dbOp(
+          supabase.from("cadastro_enderecos").insert(enderecoPayload),
+          "salvar endere\u00e7o",
+        );
       }
     }
     setSaving(false);
@@ -779,21 +862,37 @@ export default function Revenda() {
     };
     let movId = editingMovId;
     if (editingMovId) {
-      await supabase
-        .from("revenda_mov_entradas")
-        .update(payload)
-        .eq("id", editingMovId);
-      // Delete old items and re-insert
-      await supabase
-        .from("revenda_mov_entradas_itens")
-        .delete()
-        .eq("mov_id", editingMovId);
+      const { ok } = await dbOp(
+        supabase
+          .from("revenda_mov_entradas")
+          .update(payload)
+          .eq("id", editingMovId),
+        "salvar entrada",
+      );
+      if (!ok) {
+        setSaving(false);
+        return;
+      }
+      await dbOp(
+        supabase
+          .from("revenda_mov_entradas_itens")
+          .delete()
+          .eq("mov_id", editingMovId),
+        "limpar itens",
+      );
     } else {
-      const { data: inserted } = await supabase
-        .from("revenda_mov_entradas")
-        .insert({ ...payload, user_id: user.id })
-        .select("id")
-        .single();
+      const { ok, data: inserted } = await dbOp(
+        supabase
+          .from("revenda_mov_entradas")
+          .insert({ ...payload, user_id: user.id })
+          .select("id")
+          .single(),
+        "salvar entrada",
+      );
+      if (!ok) {
+        setSaving(false);
+        return;
+      }
       movId = inserted?.id;
     }
     // Insert items
@@ -808,7 +907,10 @@ export default function Revenda() {
           user_id: user.id,
         }));
       if (itensPayload.length > 0) {
-        await supabase.from("revenda_mov_entradas_itens").insert(itensPayload);
+        await dbOp(
+          supabase.from("revenda_mov_entradas_itens").insert(itensPayload),
+          "salvar itens entrada",
+        );
       }
     }
     setSaving(false);
@@ -847,18 +949,21 @@ export default function Revenda() {
 
     if (totalQty < 0 && !isPerda && !editingMovId) {
       // Devolução → criar ENTRADA com quantidade positiva
-      const { data: inserted } = await supabase
-        .from("revenda_mov_entradas")
-        .insert({
-          data: formSaida.data,
-          observacao: formSaida.observacao
-            ? `Devolução: ${formSaida.observacao}`
-            : "Devolução de PDV",
-          user_id: user.id,
-        })
-        .select("id")
-        .single();
-      if (inserted?.id) {
+      const { ok, data: inserted } = await dbOp(
+        supabase
+          .from("revenda_mov_entradas")
+          .insert({
+            data: formSaida.data,
+            observacao: formSaida.observacao
+              ? `Devolução: ${formSaida.observacao}`
+              : "Devolução de PDV",
+            user_id: user.id,
+          })
+          .select("id")
+          .single(),
+        "salvar devolução",
+      );
+      if (ok && inserted?.id) {
         const itensPayload = formSaida.itens
           .filter((i) => i.natureza_id && i.quantidade)
           .map((i) => ({
@@ -869,9 +974,10 @@ export default function Revenda() {
             user_id: user.id,
           }));
         if (itensPayload.length > 0) {
-          await supabase
-            .from("revenda_mov_entradas_itens")
-            .insert(itensPayload);
+          await dbOp(
+            supabase.from("revenda_mov_entradas_itens").insert(itensPayload),
+            "salvar itens devolu\u00e7\u00e3o",
+          );
         }
       }
     } else {
@@ -889,20 +995,37 @@ export default function Revenda() {
       };
       let movId = editingMovId;
       if (editingMovId) {
-        await supabase
-          .from("revenda_mov_saidas")
-          .update(payload)
-          .eq("id", editingMovId);
-        await supabase
-          .from("revenda_mov_saidas_itens")
-          .delete()
-          .eq("mov_id", editingMovId);
+        const { ok } = await dbOp(
+          supabase
+            .from("revenda_mov_saidas")
+            .update(payload)
+            .eq("id", editingMovId),
+          "salvar sa\u00edda",
+        );
+        if (!ok) {
+          setSaving(false);
+          return;
+        }
+        await dbOp(
+          supabase
+            .from("revenda_mov_saidas_itens")
+            .delete()
+            .eq("mov_id", editingMovId),
+          "limpar itens",
+        );
       } else {
-        const { data: inserted } = await supabase
-          .from("revenda_mov_saidas")
-          .insert({ ...payload, user_id: user.id })
-          .select("id")
-          .single();
+        const { ok, data: inserted } = await dbOp(
+          supabase
+            .from("revenda_mov_saidas")
+            .insert({ ...payload, user_id: user.id })
+            .select("id")
+            .single(),
+          "salvar sa\u00edda",
+        );
+        if (!ok) {
+          setSaving(false);
+          return;
+        }
         movId = inserted?.id;
       }
       if (movId) {
@@ -921,7 +1044,10 @@ export default function Revenda() {
             user_id: user.id,
           }));
         if (itensPayload.length > 0) {
-          await supabase.from("revenda_mov_saidas_itens").insert(itensPayload);
+          await dbOp(
+            supabase.from("revenda_mov_saidas_itens").insert(itensPayload),
+            "salvar itens sa\u00edda",
+          );
         }
       }
     }
@@ -936,23 +1062,183 @@ export default function Revenda() {
   // ── Toggle pago/pendente ──
 
   const togglePago = async (id, isPago) => {
-    await supabase
-      .from("revenda_mov_saidas")
-      .update({
-        status_pagamento: isPago ? "pendente" : "pago",
-        data_pagamento: isPago ? null : today,
-      })
-      .eq("id", id);
+    await dbOp(
+      supabase
+        .from("revenda_mov_saidas")
+        .update({
+          status_pagamento: isPago ? "pendente" : "pago",
+          data_pagamento: isPago ? null : today,
+        })
+        .eq("id", id),
+      "atualizar pagamento",
+    );
     await fetchMovimentacoes();
+  };
+
+  // ── Formas de Pagamento handlers ──
+
+  const handleSaveFormaPgto = async (e) => {
+    e.preventDefault();
+    setSaving(true);
+    if (editingFormaPgtoId) {
+      const { ok } = await dbOp(
+        supabase
+          .from("revenda_formas_pagamento")
+          .update({ nome: formFormaPgto.nome })
+          .eq("id", editingFormaPgtoId),
+        "salvar forma de pagamento",
+      );
+      if (!ok) {
+        setSaving(false);
+        return;
+      }
+    } else {
+      const { ok } = await dbOp(
+        supabase
+          .from("revenda_formas_pagamento")
+          .insert({ nome: formFormaPgto.nome, user_id: user.id }),
+        "salvar forma de pagamento",
+      );
+      if (!ok) {
+        setSaving(false);
+        return;
+      }
+    }
+    setSaving(false);
+    setModal(null);
+    setEditingFormaPgtoId(null);
+    setFormFormaPgto({ nome: "" });
+    await fetchFormasPagamento();
+  };
+
+  const openAddFormaPgto = () => {
+    setEditingFormaPgtoId(null);
+    setFormFormaPgto({ nome: "" });
+    setModal("forma_pgto");
+  };
+
+  const openEditFormaPgto = (f) => {
+    setEditingFormaPgtoId(f.id);
+    setFormFormaPgto({ nome: f.nome });
+    setModal("forma_pgto");
+  };
+
+  // ── Pagamento (transações) handlers ──
+
+  const openPagamento = async (mov) => {
+    setPagamentoMov(mov);
+    const table =
+      mov._tipo === "entrada"
+        ? "revenda_entrada_transacoes"
+        : "revenda_saida_transacoes";
+    const { data } = await supabase
+      .from(table)
+      .select("*")
+      .eq("mov_id", mov.id)
+      .order("data", { ascending: false });
+    setTransacoes(data || []);
+    const dinheiro = formasPagamento.find(
+      (f) => f.nome.toLowerCase() === "dinheiro",
+    );
+    const isEnt = mov._tipo === "entrada";
+    const totalMov = (mov.itens || []).reduce(
+      (s, i) =>
+        s +
+        (i.quantidade || 0) *
+          (isEnt ? i.valor_compra_unitario || 0 : i.valor_venda_unitario || 0),
+      0,
+    );
+    const totalPago = (data || []).reduce((s, t) => s + Number(t.valor), 0);
+    const restante = Math.max(0, totalMov - totalPago);
+    setFormTransacao({
+      forma_pagamento_id: dinheiro?.id ?? formasPagamento[0]?.id ?? "",
+      valor: restante > 0 ? restante.toFixed(2) : "",
+      data: mov.data || today,
+      observacao: "",
+    });
+    setModal("pagamento");
+  };
+
+  const handleSaveTransacao = async (e) => {
+    e.preventDefault();
+    if (!pagamentoMov) return;
+    setSaving(true);
+    const table =
+      pagamentoMov._tipo === "entrada"
+        ? "revenda_entrada_transacoes"
+        : "revenda_saida_transacoes";
+    const { ok } = await dbOp(
+      supabase.from(table).insert({
+        mov_id: pagamentoMov.id,
+        forma_pagamento_id: formTransacao.forma_pagamento_id || null,
+        valor: Number(formTransacao.valor),
+        data: formTransacao.data,
+        observacao: formTransacao.observacao || null,
+        user_id: user.id,
+      }),
+      "registrar transa\u00e7\u00e3o",
+    );
+    if (!ok) {
+      setSaving(false);
+      return;
+    }
+    // Refresh transações
+    const { data } = await supabase
+      .from(table)
+      .select("*")
+      .eq("mov_id", pagamentoMov.id)
+      .order("data", { ascending: false });
+    setTransacoes(data || []);
+    const dinheiro = formasPagamento.find(
+      (f) => f.nome.toLowerCase() === "dinheiro",
+    );
+    const isEnt2 = pagamentoMov._tipo === "entrada";
+    const totalMov2 = (pagamentoMov.itens || []).reduce(
+      (s, i) =>
+        s +
+        (i.quantidade || 0) *
+          (isEnt2 ? i.valor_compra_unitario || 0 : i.valor_venda_unitario || 0),
+      0,
+    );
+    const totalPago2 = (data || []).reduce((s, t) => s + Number(t.valor), 0);
+    const restante2 = Math.max(0, totalMov2 - totalPago2);
+    setFormTransacao({
+      forma_pagamento_id: dinheiro?.id ?? formasPagamento[0]?.id ?? "",
+      valor: restante2 > 0 ? restante2.toFixed(2) : "",
+      data: pagamentoMov?.data || today,
+      observacao: "",
+    });
+    setSaving(false);
+  };
+
+  const deleteTransacao = async (id) => {
+    if (!pagamentoMov) return;
+    const table =
+      pagamentoMov._tipo === "entrada"
+        ? "revenda_entrada_transacoes"
+        : "revenda_saida_transacoes";
+    await dbOp(
+      supabase.from(table).delete().eq("id", id),
+      "remover transa\u00e7\u00e3o",
+    );
+    const { data } = await supabase
+      .from(table)
+      .select("*")
+      .eq("mov_id", pagamentoMov.id)
+      .order("data", { ascending: false });
+    setTransacoes(data || []);
   };
 
   // ── Soft-delete ──
 
   const handleSoftDelete = async () => {
-    await supabase
-      .from(deleteTable)
-      .update({ deleted_at: new Date().toISOString() })
-      .eq("id", deleteId);
+    await dbOp(
+      supabase
+        .from(deleteTable)
+        .update({ deleted_at: new Date().toISOString() })
+        .eq("id", deleteId),
+      "remover registro",
+    );
     setModal(null);
     setDeleteId(null);
     setDeleteTable(null);
@@ -1170,7 +1456,9 @@ export default function Revenda() {
                   ? openAddNatureza
                   : cadastroSub === "fornecedores"
                     ? openAddFornecedor
-                    : openAddPdv
+                    : cadastroSub === "pagamento"
+                      ? openAddFormaPgto
+                      : openAddPdv
               }
               className="flex items-center gap-1.5 bg-primary-500 hover:bg-primary-600 text-white text-sm font-medium rounded-lg px-3 py-2 transition-colors"
             >
@@ -1179,7 +1467,9 @@ export default function Revenda() {
                 ? "Produto"
                 : cadastroSub === "fornecedores"
                   ? "Fornecedor"
-                  : "PDV"}
+                  : cadastroSub === "pagamento"
+                    ? "Forma"
+                    : "PDV"}
             </button>
           )}
         </div>
@@ -1236,6 +1526,14 @@ export default function Revenda() {
                 color: "text-primary-500",
                 bg: "bg-primary-50",
               },
+              {
+                key: "pagamento",
+                label: "Formas de Pagamento",
+                desc: `${formasPagamento.length} cadastradas`,
+                icon: Wallet,
+                color: "text-accent-500",
+                bg: "bg-accent-50",
+              },
             ].map((item) => (
               <button
                 key={item.key}
@@ -1274,7 +1572,7 @@ export default function Revenda() {
                     key={n.id}
                     produto={n}
                     onEdit={openEditNatureza}
-                    onDelete={(id) => confirmDelete(id, "revenda_naturezas")}
+                    onDelete={(id) => confirmDelete(id, "revenda_produtos")}
                   />
                 ))}
               </div>
@@ -1341,6 +1639,53 @@ export default function Revenda() {
                         onClick={(e) => {
                           e.stopPropagation();
                           confirmDelete(f.id, "revenda_fornecedores");
+                        }}
+                        className="p-2 rounded-lg hover:bg-surface-alt text-text-disabled hover:text-error transition-colors"
+                      >
+                        <Trash2 size={15} />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        ) : cadastroSub === "pagamento" ? (
+          <div className="space-y-3">
+            {formasPagamento.length === 0 ? (
+              <div className="bg-surface rounded-2xl border border-border-custom p-8 text-center">
+                <p className="text-text-secondary">
+                  Cadastre suas formas de pagamento (Pix, Dinheiro, etc).
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {formasPagamento.map((f) => (
+                  <div
+                    key={f.id}
+                    onClick={() => openEditFormaPgto(f)}
+                    className="bg-surface rounded-xl border border-border-custom p-4 flex items-center justify-between cursor-pointer hover:bg-surface-alt/50 transition-colors"
+                  >
+                    <div className="flex items-center gap-3 min-w-0 flex-1">
+                      <div className="h-9 w-9 shrink-0 rounded-lg bg-accent-50 flex items-center justify-center">
+                        <Wallet className="text-accent-500" size={16} />
+                      </div>
+                      <p className="font-semibold text-sm truncate">{f.nome}</p>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          openEditFormaPgto(f);
+                        }}
+                        className="p-2 rounded-lg hover:bg-surface-alt text-text-disabled hover:text-primary-500 transition-colors"
+                      >
+                        <Pencil size={15} />
+                      </button>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          confirmDelete(f.id, "revenda_formas_pagamento");
                         }}
                         className="p-2 rounded-lg hover:bg-surface-alt text-text-disabled hover:text-error transition-colors"
                       >
@@ -1444,6 +1789,7 @@ export default function Revenda() {
               onTogglePago={togglePago}
               onEdit={openEditMov}
               onDelete={(id) => confirmDelete(id, m._table)}
+              onPagamento={openPagamento}
             />
           ))}
         </div>
@@ -2264,9 +2610,27 @@ export default function Revenda() {
                     value={item.natureza_id}
                     onChange={(e) => {
                       const itens = [...formSaida.itens];
+                      const selectedId = e.target.value;
+                      // Find last known purchase price for this product
+                      let lastCompra = "";
+                      if (selectedId) {
+                        for (const m of movimentacoes) {
+                          const found = (m.itens || []).find(
+                            (i) =>
+                              i.natureza_id === selectedId &&
+                              i.valor_compra_unitario,
+                          );
+                          if (found) {
+                            lastCompra = String(found.valor_compra_unitario);
+                            break;
+                          }
+                        }
+                      }
                       itens[idx] = {
                         ...itens[idx],
-                        natureza_id: e.target.value,
+                        natureza_id: selectedId,
+                        valor_compra_unitario:
+                          itens[idx].valor_compra_unitario || lastCompra,
                       };
                       setFormSaida({ ...formSaida, itens });
                     }}
@@ -2455,6 +2819,293 @@ export default function Revenda() {
             Cancelar
           </button>
         </div>
+      </Modal>
+
+      {/* Modal Forma de Pagamento */}
+      <Modal
+        open={modal === "forma_pgto"}
+        onClose={() => setModal(null)}
+        title={
+          editingFormaPgtoId
+            ? "Editar Forma de Pagamento"
+            : "Nova Forma de Pagamento"
+        }
+      >
+        <form onSubmit={handleSaveFormaPgto} className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-text-secondary mb-1">
+              Nome *
+            </label>
+            <input
+              required
+              value={formFormaPgto.nome}
+              onChange={(e) =>
+                setFormFormaPgto({ ...formFormaPgto, nome: e.target.value })
+              }
+              className="w-full px-3 py-2 rounded-lg border border-border-custom bg-surface-alt text-sm focus:outline-none focus:ring-2 focus:ring-primary-400"
+              placeholder="Ex: Pix, Dinheiro, Cartão..."
+            />
+          </div>
+          <div className="flex gap-2 pt-2">
+            <button
+              type="button"
+              onClick={() => setModal(null)}
+              className="flex-1 py-2 rounded-lg border border-border-custom text-sm font-medium hover:bg-surface-alt transition-colors"
+            >
+              Cancelar
+            </button>
+            <button
+              type="submit"
+              disabled={saving}
+              className="flex-1 py-2 rounded-lg bg-primary-500 hover:bg-primary-600 text-white text-sm font-medium transition-colors disabled:opacity-50"
+            >
+              {saving ? "Salvando..." : "Salvar"}
+            </button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* Modal Pagamento (transações) */}
+      <Modal
+        open={modal === "pagamento"}
+        onClose={() => {
+          setModal(null);
+          setPagamentoMov(null);
+        }}
+        title="Pagamento"
+      >
+        {pagamentoMov &&
+          (() => {
+            const isEntrada = pagamentoMov._tipo === "entrada";
+            const itens = pagamentoMov.itens || [];
+            const totalMov = itens.reduce(
+              (s, i) =>
+                s +
+                (i.quantidade || 0) *
+                  (isEntrada
+                    ? i.valor_compra_unitario || 0
+                    : i.valor_venda_unitario || 0),
+              0,
+            );
+            const totalPago = transacoes.reduce(
+              (s, t) => s + Number(t.valor),
+              0,
+            );
+            const restante = totalMov - totalPago;
+            return (
+              <div className="space-y-4">
+                {/* Detalhes do pedido */}
+                <div className="bg-surface-alt rounded-xl p-3 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-semibold text-text-secondary">
+                      {isEntrada ? "Entrada" : "Saída"}
+                      {!isEntrada &&
+                        pagamentoMov.pdv_id &&
+                        (() => {
+                          const pdv = pdvs.find(
+                            (p) => p.id === pagamentoMov.pdv_id,
+                          );
+                          return pdv ? <> - {pdv.nome}</> : null;
+                        })()}
+                      {isEntrada &&
+                        pagamentoMov.fornecedor_id &&
+                        (() => {
+                          const forn = fornecedores.find(
+                            (f) => f.id === pagamentoMov.fornecedor_id,
+                          );
+                          return forn ? <> - {forn.nome}</> : null;
+                        })()}
+                    </span>
+                    <span className="text-xs text-text-disabled">
+                      {pagamentoMov.data}
+                    </span>
+                  </div>
+                  {/* Tabela de itens */}
+                  <table className="w-full text-xs">
+                    <thead>
+                      <tr className="text-text-disabled font-medium border-b border-border-custom">
+                        <td className="pb-1 text-left">Produto</td>
+                        <td className="pb-1 text-right w-10">Qtd</td>
+                        <td className="pb-1 text-right w-16">Unit.</td>
+                        <td className="pb-1 text-right w-18">Subtotal</td>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {itens.map((it, idx) => {
+                        const prod = naturezas.find(
+                          (n) => n.id === it.natureza_id,
+                        );
+                        const unit = isEntrada
+                          ? it.valor_compra_unitario || 0
+                          : it.valor_venda_unitario || 0;
+                        const sub = (it.quantidade || 0) * unit;
+                        return (
+                          <tr key={idx}>
+                            <td className="py-0.5 truncate max-w-[120px]">
+                              {prod?.nome || "—"}
+                            </td>
+                            <td className="py-0.5 text-right">
+                              {it.quantidade}
+                            </td>
+                            <td className="py-0.5 text-right text-text-disabled">
+                              R$ {unit.toFixed(2)}
+                            </td>
+                            <td className="py-0.5 text-right font-medium">
+                              R$ {sub.toFixed(2)}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                  {/* Total + status */}
+                  <div className="flex items-center justify-between border-t border-border-custom pt-1.5 text-sm">
+                    <span className="font-semibold">Total do pedido</span>
+                    <span className="font-bold">R$ {totalMov.toFixed(2)}</span>
+                  </div>
+                  {restante > 0 && (
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-text-disabled">Restante</span>
+                      <span className="text-error font-medium">
+                        R$ {restante.toFixed(2)}
+                      </span>
+                    </div>
+                  )}
+                </div>
+
+                {/* Lista de transações */}
+                {transacoes.length > 0 && (
+                  <div className="space-y-1">
+                    <p className="text-xs font-semibold text-text-secondary">
+                      Transações registradas
+                    </p>
+                    {transacoes.map((t) => {
+                      const fp = formasPagamento.find(
+                        (f) => f.id === t.forma_pagamento_id,
+                      );
+                      return (
+                        <div
+                          key={t.id}
+                          className="flex items-center justify-between bg-surface-alt rounded-lg px-3 py-2 text-sm"
+                        >
+                          <div>
+                            <span className="font-medium">
+                              R$ {Number(t.valor).toFixed(2)}
+                            </span>
+                            <span className="text-text-disabled ml-2">
+                              {fp?.nome || "—"}
+                            </span>
+                            <span className="text-text-disabled ml-2 text-xs">
+                              {t.data}
+                            </span>
+                          </div>
+                          <button
+                            onClick={() => deleteTransacao(t.id)}
+                            className="p-1 text-text-disabled hover:text-error"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {/* Form nova transação */}
+                <form
+                  onSubmit={handleSaveTransacao}
+                  className="space-y-3 border-t border-border-custom pt-3"
+                >
+                  <p className="text-xs font-semibold text-text-secondary">
+                    Nova transação
+                  </p>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="block text-xs text-text-disabled mb-0.5">
+                        Forma
+                      </label>
+                      <select
+                        value={formTransacao.forma_pagamento_id}
+                        onChange={(e) =>
+                          setFormTransacao({
+                            ...formTransacao,
+                            forma_pagamento_id: e.target.value,
+                          })
+                        }
+                        className="w-full px-2 py-1.5 rounded-lg border border-border-custom bg-surface-alt text-sm"
+                      >
+                        <option value="">— Nenhuma —</option>
+                        {formasPagamento.map((f) => (
+                          <option key={f.id} value={f.id}>
+                            {f.nome}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-xs text-text-disabled mb-0.5">
+                        Valor *
+                      </label>
+                      <input
+                        required
+                        type="number"
+                        step="0.01"
+                        min="0.01"
+                        value={formTransacao.valor}
+                        onChange={(e) =>
+                          setFormTransacao({
+                            ...formTransacao,
+                            valor: e.target.value,
+                          })
+                        }
+                        className="w-full px-2 py-1.5 rounded-lg border border-border-custom bg-surface-alt text-sm"
+                        placeholder="0,00"
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-xs text-text-disabled mb-0.5">
+                      Data
+                    </label>
+                    <input
+                      type="date"
+                      value={formTransacao.data}
+                      onChange={(e) =>
+                        setFormTransacao({
+                          ...formTransacao,
+                          data: e.target.value,
+                        })
+                      }
+                      className="w-full px-2 py-1.5 rounded-lg border border-border-custom bg-surface-alt text-sm"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-text-disabled mb-0.5">
+                      Observação
+                    </label>
+                    <input
+                      value={formTransacao.observacao}
+                      onChange={(e) =>
+                        setFormTransacao({
+                          ...formTransacao,
+                          observacao: e.target.value,
+                        })
+                      }
+                      className="w-full px-2 py-1.5 rounded-lg border border-border-custom bg-surface-alt text-sm"
+                      placeholder="Opcional"
+                    />
+                  </div>
+                  <button
+                    type="submit"
+                    disabled={saving}
+                    className="w-full py-2 rounded-lg bg-primary-500 hover:bg-primary-600 text-white text-sm font-medium transition-colors disabled:opacity-50"
+                  >
+                    {saving ? "Salvando..." : "Registrar Transação"}
+                  </button>
+                </form>
+              </div>
+            );
+          })()}
       </Modal>
 
       {/* Modal Delete */}

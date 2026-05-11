@@ -74,7 +74,7 @@ export default function Dashboard() {
         .select("tipo, natureza_id, quantidade")
         .is("deleted_at", null),
       supabase
-        .from("revenda_naturezas")
+        .from("revenda_produtos")
         .select("id, nome")
         .is("deleted_at", null),
       supabase

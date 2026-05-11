@@ -26,9 +26,42 @@ const TABS = [
   { key: "consumo", label: "Consumo", icon: Gauge },
 ];
 
+// ── Helper: supabase mutation with error handling ──
+const dbOp = async (query, label = "Operação") => {
+  const res = await query;
+  if (res.error) {
+    console.error(`[${label}]`, res.error);
+    alert(`Erro ao ${label}: ${res.error.message}`);
+    return { ok: false, error: res.error, data: res.data };
+  }
+  return { ok: true, data: res.data };
+};
+
 // ── Formulários ────────────────────────────────────────
 
 function FormProducao({ data, onChange, onSave, saving, funcionarios }) {
+  const [ultimaEmbalagem, setUltimaEmbalagem] = useState(null);
+
+  useEffect(() => {
+    const tamanho = parseInt(data.tipo);
+    if (!tamanho) return;
+    supabase
+      .from("gelo_despesas")
+      .select("valor_unitario")
+      .eq("categoria", "plastico")
+      .eq("tamanho_saco", tamanho)
+      .is("deleted_at", null)
+      .order("data", { ascending: false })
+      .limit(1)
+      .then(({ data: rows }) => {
+        if (rows && rows.length > 0 && rows[0].valor_unitario != null) {
+          setUltimaEmbalagem(Number(rows[0].valor_unitario).toFixed(2));
+        } else {
+          setUltimaEmbalagem(null);
+        }
+      });
+  }, [data.tipo]); // eslint-disable-line react-hooks/exhaustive-deps
+
   return (
     <form onSubmit={onSave} className="space-y-3">
       <div className="grid grid-cols-2 gap-3">
@@ -84,6 +117,25 @@ function FormProducao({ data, onChange, onSave, saving, funcionarios }) {
             placeholder="0"
           />
         </div>
+      </div>
+      <div>
+        <label className="flex items-center justify-between text-sm font-medium mb-1">
+          <span>Preço por pacote (R$)</span>
+          {ultimaEmbalagem && (
+            <span className="text-xs text-text-disabled font-normal">
+              R$ {ultimaEmbalagem}/embalagem
+            </span>
+          )}
+        </label>
+        <input
+          type="number"
+          step="0.01"
+          min="0"
+          value={data.preco_pacote}
+          onChange={(e) => onChange({ ...data, preco_pacote: e.target.value })}
+          className="w-full rounded-lg border border-border-custom bg-bg px-3 py-2 text-sm"
+          placeholder="0,00"
+        />
       </div>
       <div>
         <label className="block text-sm font-medium mb-1">Observação</label>
@@ -568,6 +620,7 @@ export default function Gelo() {
     data: today,
     quantidade: "",
     tipo: "5kg",
+    preco_pacote: "",
     funcionario: "",
     observacao: "",
   };
@@ -735,6 +788,9 @@ export default function Gelo() {
     if (payload.valor_unitario)
       payload.valor_unitario = Number(payload.valor_unitario);
     if (payload.valor) payload.valor = Number(payload.valor);
+    if (payload.preco_pacote !== "" && payload.preco_pacote != null)
+      payload.preco_pacote = Number(payload.preco_pacote);
+    else payload.preco_pacote = null;
     if (
       tab === "despesas" &&
       payload.quantidade &&
@@ -795,9 +851,23 @@ export default function Gelo() {
     }
     if (editingId) {
       delete payload.user_id;
-      await supabase.from(targetTable).update(payload).eq("id", editingId);
+      const { ok } = await dbOp(
+        supabase.from(targetTable).update(payload).eq("id", editingId),
+        "salvar",
+      );
+      if (!ok) {
+        setSaving(false);
+        return;
+      }
     } else {
-      await supabase.from(targetTable).insert(payload);
+      const { ok } = await dbOp(
+        supabase.from(targetTable).insert(payload),
+        "salvar",
+      );
+      if (!ok) {
+        setSaving(false);
+        return;
+      }
     }
     setSaving(false);
     setEditingId(null);
@@ -806,10 +876,13 @@ export default function Gelo() {
   };
 
   const handleDelete = async () => {
-    await supabase
-      .from(tableMap[tab])
-      .update({ deleted_at: new Date().toISOString() })
-      .eq("id", deleteId);
+    await dbOp(
+      supabase
+        .from(tableMap[tab])
+        .update({ deleted_at: new Date().toISOString() })
+        .eq("id", deleteId),
+      "remover",
+    );
     setModal(null);
     setDeleteId(null);
     fetchData();
@@ -844,22 +917,30 @@ export default function Gelo() {
 
     // Create new
     const novoEstoque = Math.max(0, item.estoque_atual + delta);
-    await supabase
-      .from("gelo_despesas")
-      .update({ estoque_atual: novoEstoque })
-      .eq("id", movModal.itemId);
-    await supabase.from("gelo_consumo_lancamentos").insert({
-      despesa_id: movModal.itemId,
-      descricao: item.descricao || "",
-      categoria: item.categoria || "",
-      quantidade: delta,
-      valor_unitario: item.valor_unitario ?? null,
-      estoque_antes: item.estoque_atual,
-      estoque_depois: novoEstoque,
-      data: movForm.data,
-      observacao: movForm.observacao || null,
-      user_id: user.id,
-    });
+    const { ok: ok1 } = await dbOp(
+      supabase
+        .from("gelo_despesas")
+        .update({ estoque_atual: novoEstoque })
+        .eq("id", movModal.itemId),
+      "atualizar estoque",
+    );
+    if (!ok1) return;
+    const { ok: ok2 } = await dbOp(
+      supabase.from("gelo_consumo_lancamentos").insert({
+        despesa_id: movModal.itemId,
+        descricao: item.descricao || "",
+        categoria: item.categoria || "",
+        quantidade: delta,
+        valor_unitario: item.valor_unitario ?? null,
+        estoque_antes: item.estoque_atual,
+        estoque_depois: novoEstoque,
+        data: movForm.data,
+        observacao: movForm.observacao || null,
+        user_id: user.id,
+      }),
+      "registrar movimentação",
+    );
+    if (!ok2) return;
     setItems((prev) =>
       prev.map((i) =>
         i.id === movModal.itemId ? { ...i, estoque_atual: novoEstoque } : i,
@@ -892,20 +973,26 @@ export default function Gelo() {
     const item = items.find((i) => i.id === logModal.itemId);
     if (item) {
       const revertedStock = item.estoque_atual - Number(log.quantidade);
-      await supabase
-        .from("gelo_despesas")
-        .update({ estoque_atual: revertedStock })
-        .eq("id", logModal.itemId);
+      await dbOp(
+        supabase
+          .from("gelo_despesas")
+          .update({ estoque_atual: revertedStock })
+          .eq("id", logModal.itemId),
+        "reverter estoque",
+      );
       setItems((prev) =>
         prev.map((i) =>
           i.id === logModal.itemId ? { ...i, estoque_atual: revertedStock } : i,
         ),
       );
     }
-    await supabase
-      .from("gelo_consumo_lancamentos")
-      .update({ deleted_at: new Date().toISOString() })
-      .eq("id", logId);
+    await dbOp(
+      supabase
+        .from("gelo_consumo_lancamentos")
+        .update({ deleted_at: new Date().toISOString() })
+        .eq("id", logId),
+      "remover lançamento",
+    );
     setLogModal((prev) => ({
       ...prev,
       logs: prev.logs.filter((l) => l.id !== logId),
@@ -921,10 +1008,13 @@ export default function Gelo() {
     const item = items.find((i) => i.id === logModal.itemId);
     if (item) {
       const novoEstoque = Math.max(0, item.estoque_atual + diff);
-      await supabase
-        .from("gelo_despesas")
-        .update({ estoque_atual: novoEstoque })
-        .eq("id", logModal.itemId);
+      await dbOp(
+        supabase
+          .from("gelo_despesas")
+          .update({ estoque_atual: novoEstoque })
+          .eq("id", logModal.itemId),
+        "atualizar estoque",
+      );
       setItems((prev) =>
         prev.map((i) =>
           i.id === logModal.itemId ? { ...i, estoque_atual: novoEstoque } : i,
@@ -936,10 +1026,13 @@ export default function Gelo() {
         observacao: newObs || null,
       };
       if (newDate) updatePayload.data = newDate;
-      await supabase
-        .from("gelo_consumo_lancamentos")
-        .update(updatePayload)
-        .eq("id", logId);
+      await dbOp(
+        supabase
+          .from("gelo_consumo_lancamentos")
+          .update(updatePayload)
+          .eq("id", logId),
+        "editar lançamento",
+      );
       setLogModal((prev) => ({
         ...prev,
         logs: prev.logs.map((l) =>
@@ -1330,6 +1423,7 @@ export default function Gelo() {
                               data: item.data || "",
                               quantidade: item.quantidade ?? "",
                               tipo: item.tipo || "5kg",
+                              preco_pacote: item.preco_pacote ?? "",
                               funcionario: item.funcionario || "",
                               observacao: item.observacao || "",
                             });

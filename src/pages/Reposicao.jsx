@@ -327,7 +327,7 @@ export default function Reposicao() {
         .eq("entidade_tipo", "pdv")
         .is("deleted_at", null),
       supabase
-        .from("revenda_naturezas")
+        .from("revenda_produtos")
         .select("id, nome, natureza")
         .is("deleted_at", null),
     ]);
