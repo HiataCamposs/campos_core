@@ -43,7 +43,7 @@ function FormProducao({ data, onChange, onSave, saving, funcionarios }) {
   const [ultimaEmbalagem, setUltimaEmbalagem] = useState(null);
 
   useEffect(() => {
-    const tamanho = parseInt(data.tipo);
+    const tamanho = parseInt(data.tamanho);
     if (!tamanho) return;
     supabase
       .from("gelo_despesas")
@@ -60,7 +60,7 @@ function FormProducao({ data, onChange, onSave, saving, funcionarios }) {
           setUltimaEmbalagem(null);
         }
       });
-  }, [data.tipo]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [data.tamanho]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <form onSubmit={onSave} className="space-y-3">
@@ -96,13 +96,15 @@ function FormProducao({ data, onChange, onSave, saving, funcionarios }) {
         <div>
           <label className="block text-sm font-medium mb-1">Tamanho</label>
           <select
-            value={data.tipo}
-            onChange={(e) => onChange({ ...data, tipo: e.target.value })}
+            value={data.tamanho}
+            onChange={(e) =>
+              onChange({ ...data, tamanho: Number(e.target.value) })
+            }
             className="w-full rounded-lg border border-border-custom bg-bg px-3 py-2 text-sm"
           >
-            <option value="5kg">5 kg</option>
-            <option value="10kg">10 kg</option>
-            <option value="20kg">20 kg</option>
+            <option value={5}>5 kg</option>
+            <option value={10}>10 kg</option>
+            <option value={20}>20 kg</option>
           </select>
         </div>
         <div>
@@ -619,7 +621,7 @@ export default function Gelo() {
   const emptyProducao = {
     data: today,
     quantidade: "",
-    tipo: "5kg",
+    tamanho: 5,
     preco_pacote: "",
     funcionario: "",
     observacao: "",
@@ -872,6 +874,30 @@ export default function Gelo() {
     setSaving(false);
     setEditingId(null);
     setModal(null);
+    // Update custo_unitario on revenda_produtos for gelo products
+    if (tab === "producao" && payload.preco_pacote != null && payload.tamanho) {
+      const tamanho = parseInt(payload.tamanho);
+      if (tamanho) {
+        const { data: prods } = await supabase
+          .from("revenda_produtos")
+          .select("id")
+          .eq("natureza", "Gelo")
+          .eq("dimensao", "KG")
+          .eq("tamanho", String(tamanho))
+          .is("deleted_at", null);
+        if (prods && prods.length > 0) {
+          for (const p of prods) {
+            await dbOp(
+              supabase
+                .from("revenda_produtos")
+                .update({ custo_unitario: payload.preco_pacote })
+                .eq("id", p.id),
+              "atualizar custo produto",
+            );
+          }
+        }
+      }
+    }
     fetchData();
   };
 
@@ -1310,7 +1336,7 @@ export default function Gelo() {
                         </span>
                         {tab === "producao" && (
                           <span className="font-semibold">
-                            {item.quantidade} sacos {item.tipo}
+                            {item.quantidade} sacos {item.tamanho}kg
                           </span>
                         )}
                         {(tab === "despesas" || tab === "consumo") && (
@@ -1422,7 +1448,7 @@ export default function Gelo() {
                             setForm({
                               data: item.data || "",
                               quantidade: item.quantidade ?? "",
-                              tipo: item.tipo || "5kg",
+                              tamanho: item.tamanho || 5,
                               preco_pacote: item.preco_pacote ?? "",
                               funcionario: item.funcionario || "",
                               observacao: item.observacao || "",

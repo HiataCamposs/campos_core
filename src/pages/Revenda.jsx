@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from "react";
+﻿import { useEffect, useState, useCallback } from "react";
 import { supabase } from "../lib/supabaseClient";
 import { useAuth } from "../contexts/AuthContext";
 import { useBottomTabs } from "../contexts/BottomTabsContext";
@@ -28,8 +28,8 @@ import {
 
 const today = new Date().toISOString().slice(0, 10);
 
-// ── Helper: supabase mutation with error handling ──
-const dbOp = async (query, label = "Operação") => {
+// â”€â”€ Helper: supabase mutation with error handling â”€â”€
+const dbOp = async (query, label = "OperaÃ§Ã£o") => {
   const res = await query;
   if (res.error) {
     console.error(`[${label}]`, res.error);
@@ -41,19 +41,19 @@ const dbOp = async (query, label = "Operação") => {
 
 const TABS = [
   { key: "entradas", label: "Entradas", icon: ArrowDownCircle },
-  { key: "saidas", label: "Saídas", icon: ArrowUpCircle },
+  { key: "saidas", label: "SaÃ­das", icon: ArrowUpCircle },
   { key: "cadastro", label: "Cadastro", icon: Package },
 ];
 
 const fmtMoney = (v) =>
   v != null && v !== ""
     ? `R$ ${Number(v).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`
-    : "—";
+    : "â€”";
 
 const fmtDate = (d) =>
-  d ? new Date(d + "T00:00:00").toLocaleDateString("pt-BR") : "—";
+  d ? new Date(d + "T00:00:00").toLocaleDateString("pt-BR") : "â€”";
 
-// ── Produto Card ────────────
+// â”€â”€ Produto Card â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function ProdutoCard({ produto, onEdit, onDelete }) {
   return (
@@ -91,14 +91,13 @@ function ProdutoCard({ produto, onEdit, onDelete }) {
   );
 }
 
-// ── Movimentação Card ──────────────────────────────────
+// â”€â”€ MovimentaÃ§Ã£o Card â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function MovCard({
   mov,
   pdvs,
   produtos,
   fornecedores,
-  onTogglePago,
   onEdit,
   onDelete,
   onPagamento,
@@ -108,6 +107,7 @@ function MovCard({
   const pdv = pdvs.find((p) => p.id === mov.pdv_id);
   const forn = fornecedores.find((f) => f.id === mov.fornecedor_id);
   const pago = mov.status_pagamento === "pago";
+  const parcial = mov.status_pagamento === "parcial";
   const itens = mov.itens || [];
 
   // Summaries
@@ -122,14 +122,14 @@ function MovCard({
   );
   const firstProd =
     itens.length > 0
-      ? produtos.find((n) => n.id === itens[0].natureza_id)
+      ? produtos.find((n) => n.id === itens[0].produto_id)
       : null;
   const summary =
     itens.length === 1
-      ? firstProd?.nome || "—"
+      ? firstProd?.nome || "â€”"
       : itens.length > 1
         ? `${itens.length} produtos`
-        : "—";
+        : "â€”";
 
   const Icon = isEntrada ? ArrowDownCircle : ArrowUpCircle;
   const colorClass = isEntrada
@@ -138,21 +138,27 @@ function MovCard({
       ? "text-error"
       : pago
         ? "text-success"
-        : "text-error/70";
+        : parcial
+          ? "text-warning"
+          : "text-error/70";
   const bgClass = isEntrada
     ? "bg-accent-50"
     : mov.is_perda
       ? "bg-error/10"
       : pago
         ? "bg-success/10"
-        : "bg-error/5";
+        : parcial
+          ? "bg-warning/10"
+          : "bg-error/5";
   const borderClass = isEntrada
     ? "border-accent-500/30"
     : mov.is_perda
       ? "border-error/30"
       : pago
         ? "border-success/30"
-        : "border-error/20";
+        : parcial
+          ? "border-warning/30"
+          : "border-error/20";
 
   return (
     <div
@@ -187,15 +193,9 @@ function MovCard({
           </div>
           <p className="text-xs text-text-disabled">
             {fmtDate(mov.data)}
-            {" · "}
-            {summary}
-            {" · "}
-            {totalQty}x{" "}
-            {fmtMoney(
-              isEntrada
-                ? totalCompra / Math.max(totalQty, 1)
-                : totalVenda / Math.max(totalQty, 1),
-            )}
+            {" Â· "}
+            {totalQty}x{" Â· "}
+            {fmtMoney(isEntrada ? totalCompra : totalVenda)}
           </p>
         </div>
         {open ? (
@@ -214,19 +214,19 @@ function MovCard({
                 Itens
               </p>
               {itens.map((item, i) => {
-                const prod = produtos.find((n) => n.id === item.natureza_id);
+                const prod = produtos.find((n) => n.id === item.produto_id);
                 return (
                   <div
                     key={i}
                     className="flex items-center justify-between text-xs bg-surface-alt rounded-lg px-2.5 py-1.5"
                   >
                     <span className="text-text-primary font-medium">
-                      {prod?.nome || "—"}
+                      {prod?.nome || "â€”"}
                     </span>
                     <span className="text-text-secondary">
                       {item.quantidade}x {fmtMoney(item.valor_compra_unitario)}
                       {!isEntrada && item.valor_venda_unitario != null && (
-                        <> → {fmtMoney(item.valor_venda_unitario)}</>
+                        <> â†’ {fmtMoney(item.valor_venda_unitario)}</>
                       )}
                     </span>
                   </div>
@@ -247,13 +247,9 @@ function MovCard({
                 <span className="text-text-primary font-medium">
                   {fmtMoney(totalVenda)}
                 </span>
-                <span className="text-text-disabled">Acerto</span>
-                <span className="text-text-primary font-medium">
-                  {fmtMoney(mov.valor_acerto)}
-                </span>
                 <span className="text-text-disabled">PDV</span>
                 <span className="text-text-primary font-medium">
-                  {pdv?.nome || "—"}
+                  {pdv?.nome || "â€”"}
                 </span>
               </>
             )}
@@ -305,9 +301,9 @@ function MovCard({
   );
 }
 
-// ══════════════════════════════════════════════════════════
-// Página principal
-// ══════════════════════════════════════════════════════════
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// PÃ¡gina principal
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
 export default function Revenda() {
   const { user } = useAuth();
@@ -344,7 +340,12 @@ export default function Revenda() {
   });
 
   // Forms
-  const [formNatureza, setFormNatureza] = useState({ nome: "", natureza: "" });
+  const [formNatureza, setFormNatureza] = useState({
+    nome: "",
+    natureza: "",
+    dimensao: "",
+    tamanho: "",
+  });
   const [prodNaturezaSuggestions, setProdNaturezaSuggestions] = useState([]);
   const [showProdNaturezaSugg, setShowProdNaturezaSugg] = useState(false);
   const [formFornecedor, setFormFornecedor] = useState({
@@ -379,16 +380,15 @@ export default function Revenda() {
     fornecedor_id: "",
     nota_fiscal: "",
     observacao: "",
-    itens: [{ natureza_id: "", quantidade: "", valor_compra_unitario: "" }],
+    itens: [{ produto_id: "", quantidade: "", valor_compra_unitario: "" }],
   });
   const [formSaida, setFormSaida] = useState({
     data: today,
     pdv_id: "",
-    valor_acerto: "",
     observacao: "",
     itens: [
       {
-        natureza_id: "",
+        produto_id: "",
         quantidade: "",
         valor_compra_unitario: "",
         valor_venda_unitario: "",
@@ -396,7 +396,7 @@ export default function Revenda() {
     ],
   });
 
-  // ── Fetch ──
+  // â”€â”€ Fetch â”€â”€
 
   const fetchNaturezas = useCallback(async () => {
     const { data } = await supabase
@@ -536,6 +536,51 @@ export default function Revenda() {
         _table: "revenda_mov_saidas",
       })),
     ].sort((a, b) => (b.data || "").localeCompare(a.data || ""));
+
+    // Fetch transaction totals to compute payment status
+    const entradaIds = (entradas || []).map((e) => e.id);
+    const saidaIds = (saidas || []).map((s) => s.id);
+    const [{ data: entTrans }, { data: saiTrans }] = await Promise.all([
+      entradaIds.length > 0
+        ? supabase
+            .from("revenda_entrada_transacoes")
+            .select("mov_id, valor")
+            .in("mov_id", entradaIds)
+        : Promise.resolve({ data: [] }),
+      saidaIds.length > 0
+        ? supabase
+            .from("revenda_saida_transacoes")
+            .select("mov_id, valor")
+            .in("mov_id", saidaIds)
+        : Promise.resolve({ data: [] }),
+    ]);
+    // Group transaction totals by mov_id
+    const transMap = {};
+    for (const t of entTrans || [])
+      transMap[t.mov_id] = (transMap[t.mov_id] || 0) + Number(t.valor);
+    for (const t of saiTrans || [])
+      transMap[t.mov_id] = (transMap[t.mov_id] || 0) + Number(t.valor);
+    // Compute status_pagamento dynamically
+    for (const mov of all) {
+      const isEnt = mov._tipo === "entrada";
+      const totalMov = (mov.itens || []).reduce(
+        (s, i) =>
+          s +
+          (i.quantidade || 0) *
+            (isEnt
+              ? i.valor_compra_unitario || 0
+              : i.valor_venda_unitario || 0),
+        0,
+      );
+      const totalPago = transMap[mov.id] || 0;
+      mov.status_pagamento =
+        totalPago >= totalMov && totalMov > 0
+          ? "pago"
+          : totalPago > 0
+            ? "parcial"
+            : "pendente";
+    }
+
     setMovimentacoes(all);
   }, [tab]);
 
@@ -583,7 +628,7 @@ export default function Revenda() {
     return () => setTabs(null);
   }, [tab, setTabs]);
 
-  // ── Save handlers ──
+  // â”€â”€ Save handlers â”€â”€
 
   const handleSaveNatureza = async (e) => {
     e.preventDefault();
@@ -591,10 +636,12 @@ export default function Revenda() {
     if (editingProdutoId) {
       const { ok } = await dbOp(
         supabase
-          .from("revenda_naturezas")
+          .from("revenda_produtos")
           .update({
             nome: formNatureza.nome,
             natureza: formNatureza.natureza || null,
+            dimensao: formNatureza.dimensao || null,
+            tamanho: formNatureza.tamanho || null,
           })
           .eq("id", editingProdutoId),
         "salvar produto",
@@ -618,7 +665,7 @@ export default function Revenda() {
     setSaving(false);
     setModal(null);
     setEditingProdutoId(null);
-    setFormNatureza({ nome: "", natureza: "" });
+    setFormNatureza({ nome: "", natureza: "", dimensao: "", tamanho: "" });
     await fetchNaturezas();
   };
 
@@ -898,10 +945,10 @@ export default function Revenda() {
     // Insert items
     if (movId) {
       const itensPayload = formEntrada.itens
-        .filter((i) => i.natureza_id && i.quantidade)
+        .filter((i) => i.produto_id && i.quantidade)
         .map((i) => ({
           mov_id: movId,
-          natureza_id: i.natureza_id,
+          produto_id: i.produto_id,
           quantidade: Number(i.quantidade),
           valor_compra_unitario: Number(i.valor_compra_unitario) || null,
           user_id: user.id,
@@ -911,6 +958,22 @@ export default function Revenda() {
           supabase.from("revenda_mov_entradas_itens").insert(itensPayload),
           "salvar itens entrada",
         );
+        // Update custo_unitario on revenda_produtos (non-Gelo products)
+        for (const item of itensPayload) {
+          if (item.valor_compra_unitario != null && item.produto_id) {
+            const prod = naturezas.find((n) => n.id === item.produto_id);
+            if (prod && prod.natureza !== "Gelo") {
+              await dbOp(
+                supabase
+                  .from("revenda_produtos")
+                  .update({ custo_unitario: item.valor_compra_unitario })
+                  .eq("id", item.produto_id),
+                "atualizar custo produto",
+              );
+            }
+          }
+        }
+        await fetchNaturezas();
       }
     }
     setSaving(false);
@@ -927,7 +990,7 @@ export default function Revenda() {
       0,
     );
 
-    // Se quantidade negativa e ainda não decidiu: perguntar
+    // Se quantidade negativa e ainda nÃ£o decidiu: perguntar
     if (totalQty < 0 && forcePerda === undefined) {
       setPerdaPrompt(true);
       return;
@@ -935,40 +998,29 @@ export default function Revenda() {
 
     setSaving(true);
     const isPerda = forcePerda === true;
-    const totalVenda = formSaida.itens.reduce(
-      (s, i) =>
-        s +
-        Math.abs(Number(i.quantidade || 0)) *
-          Number(i.valor_venda_unitario || 0),
-      0,
-    );
-    const acerto =
-      formSaida.valor_acerto !== ""
-        ? Number(formSaida.valor_acerto)
-        : totalVenda || null;
 
     if (totalQty < 0 && !isPerda && !editingMovId) {
-      // Devolução → criar ENTRADA com quantidade positiva
+      // DevoluÃ§Ã£o â†’ criar ENTRADA com quantidade positiva
       const { ok, data: inserted } = await dbOp(
         supabase
           .from("revenda_mov_entradas")
           .insert({
             data: formSaida.data,
             observacao: formSaida.observacao
-              ? `Devolução: ${formSaida.observacao}`
-              : "Devolução de PDV",
+              ? `DevoluÃ§Ã£o: ${formSaida.observacao}`
+              : "DevoluÃ§Ã£o de PDV",
             user_id: user.id,
           })
           .select("id")
           .single(),
-        "salvar devolução",
+        "salvar devoluÃ§Ã£o",
       );
       if (ok && inserted?.id) {
         const itensPayload = formSaida.itens
-          .filter((i) => i.natureza_id && i.quantidade)
+          .filter((i) => i.produto_id && i.quantidade)
           .map((i) => ({
             mov_id: inserted.id,
-            natureza_id: i.natureza_id,
+            produto_id: i.produto_id,
             quantidade: Math.abs(Number(i.quantidade)),
             valor_compra_unitario: Number(i.valor_compra_unitario) || null,
             user_id: user.id,
@@ -985,7 +1037,6 @@ export default function Revenda() {
       const payload = {
         data: formSaida.data,
         pdv_id: formSaida.pdv_id || null,
-        valor_acerto: isPerda ? null : acerto,
         observacao: isPerda
           ? formSaida.observacao
             ? `Perda: ${formSaida.observacao}`
@@ -1030,10 +1081,10 @@ export default function Revenda() {
       }
       if (movId) {
         const itensPayload = formSaida.itens
-          .filter((i) => i.natureza_id && i.quantidade)
+          .filter((i) => i.produto_id && i.quantidade)
           .map((i) => ({
             mov_id: movId,
-            natureza_id: i.natureza_id,
+            produto_id: i.produto_id,
             quantidade: isPerda
               ? Math.abs(Number(i.quantidade))
               : Number(i.quantidade),
@@ -1059,23 +1110,7 @@ export default function Revenda() {
     await fetchMovimentacoes();
   };
 
-  // ── Toggle pago/pendente ──
-
-  const togglePago = async (id, isPago) => {
-    await dbOp(
-      supabase
-        .from("revenda_mov_saidas")
-        .update({
-          status_pagamento: isPago ? "pendente" : "pago",
-          data_pagamento: isPago ? null : today,
-        })
-        .eq("id", id),
-      "atualizar pagamento",
-    );
-    await fetchMovimentacoes();
-  };
-
-  // ── Formas de Pagamento handlers ──
+  // â”€â”€ Formas de Pagamento handlers â”€â”€
 
   const handleSaveFormaPgto = async (e) => {
     e.preventDefault();
@@ -1123,7 +1158,7 @@ export default function Revenda() {
     setModal("forma_pgto");
   };
 
-  // ── Pagamento (transações) handlers ──
+  // â”€â”€ Pagamento (transaÃ§Ãµes) handlers â”€â”€
 
   const openPagamento = async (mov) => {
     setPagamentoMov(mov);
@@ -1182,7 +1217,7 @@ export default function Revenda() {
       setSaving(false);
       return;
     }
-    // Refresh transações
+    // Refresh transaÃ§Ãµes
     const { data } = await supabase
       .from(table)
       .select("*")
@@ -1208,7 +1243,32 @@ export default function Revenda() {
       data: pagamentoMov?.data || today,
       observacao: "",
     });
+    await updatePaymentStatus(pagamentoMov, data || []);
     setSaving(false);
+  };
+
+  // Update status_pagamento based on transactions total
+  const updatePaymentStatus = async (mov, transacoes) => {
+    const isEnt = mov._tipo === "entrada";
+    const totalMov = (mov.itens || []).reduce(
+      (s, i) =>
+        s +
+        (i.quantidade || 0) *
+          (isEnt ? i.valor_compra_unitario || 0 : i.valor_venda_unitario || 0),
+      0,
+    );
+    const totalPago = transacoes.reduce((s, t) => s + Number(t.valor), 0);
+    const status =
+      totalPago >= totalMov && totalMov > 0
+        ? "pago"
+        : totalPago > 0
+          ? "parcial"
+          : "pendente";
+    setMovimentacoes((prev) =>
+      prev.map((m) =>
+        m.id === mov.id ? { ...m, status_pagamento: status } : m,
+      ),
+    );
   };
 
   const deleteTransacao = async (id) => {
@@ -1227,9 +1287,10 @@ export default function Revenda() {
       .eq("mov_id", pagamentoMov.id)
       .order("data", { ascending: false });
     setTransacoes(data || []);
+    await updatePaymentStatus(pagamentoMov, data || []);
   };
 
-  // ── Soft-delete ──
+  // â”€â”€ Soft-delete â”€â”€
 
   const handleSoftDelete = async () => {
     await dbOp(
@@ -1251,17 +1312,22 @@ export default function Revenda() {
     setModal("delete");
   };
 
-  // ── Open modals ──
+  // â”€â”€ Open modals â”€â”€
 
   const openAddNatureza = () => {
     setEditingProdutoId(null);
-    setFormNatureza({ nome: "", natureza: "" });
+    setFormNatureza({ nome: "", natureza: "", dimensao: "", tamanho: "" });
     setModal("natureza");
   };
 
   const openEditNatureza = (n) => {
     setEditingProdutoId(n.id);
-    setFormNatureza({ nome: n.nome, natureza: n.natureza || "" });
+    setFormNatureza({
+      nome: n.nome,
+      natureza: n.natureza || "",
+      dimensao: n.dimensao || "",
+      tamanho: n.tamanho || "",
+    });
     setModal("natureza");
   };
 
@@ -1345,7 +1411,7 @@ export default function Revenda() {
       observacao: "",
       itens: [
         {
-          natureza_id: naturezas[0]?.id ?? "",
+          produto_id: naturezas[0]?.id ?? "",
           quantidade: "",
           valor_compra_unitario: "",
         },
@@ -1360,11 +1426,10 @@ export default function Revenda() {
     setFormSaida({
       data: today,
       pdv_id: pdvs[0]?.id ?? "",
-      valor_acerto: "",
       observacao: "",
       itens: [
         {
-          natureza_id: naturezas[0]?.id ?? "",
+          produto_id: naturezas[0]?.id ?? "",
           quantidade: "",
           valor_compra_unitario: "",
           valor_venda_unitario: "",
@@ -1386,24 +1451,23 @@ export default function Revenda() {
         itens:
           (m.itens || []).length > 0
             ? m.itens.map((i) => ({
-                natureza_id: i.natureza_id || "",
+                produto_id: i.produto_id || "",
                 quantidade: i.quantidade?.toString() || "",
                 valor_compra_unitario:
                   i.valor_compra_unitario?.toString() || "",
               }))
-            : [{ natureza_id: "", quantidade: "", valor_compra_unitario: "" }],
+            : [{ produto_id: "", quantidade: "", valor_compra_unitario: "" }],
       });
       setModal("entrada");
     } else {
       setFormSaida({
         data: m.data || today,
         pdv_id: m.pdv_id || "",
-        valor_acerto: m.valor_acerto?.toString() || "",
         observacao: m.observacao || "",
         itens:
           (m.itens || []).length > 0
             ? m.itens.map((i) => ({
-                natureza_id: i.natureza_id || "",
+                produto_id: i.produto_id || "",
                 quantidade: i.quantidade?.toString() || "",
                 valor_compra_unitario:
                   i.valor_compra_unitario?.toString() || "",
@@ -1411,7 +1475,7 @@ export default function Revenda() {
               }))
             : [
                 {
-                  natureza_id: "",
+                  produto_id: "",
                   quantidade: "",
                   valor_compra_unitario: "",
                   valor_venda_unitario: "",
@@ -1422,7 +1486,7 @@ export default function Revenda() {
     }
   };
 
-  // ── Render ──
+  // â”€â”€ Render â”€â”€
 
   return (
     <div className="space-y-4">
@@ -1446,7 +1510,7 @@ export default function Revenda() {
               onClick={openAddSaida}
               className="flex items-center gap-1.5 bg-primary-500 hover:bg-primary-600 text-white text-sm font-medium rounded-lg px-3 py-2 transition-colors"
             >
-              <Plus size={16} /> Saída
+              <Plus size={16} /> SaÃ­da
             </button>
           )}
           {tab === "cadastro" && cadastroSub && (
@@ -1492,7 +1556,7 @@ export default function Revenda() {
         ))}
       </div>
 
-      {/* Conteúdo */}
+      {/* ConteÃºdo */}
       {loading ? (
         <div className="flex justify-center py-12">
           <div className="animate-spin h-8 w-8 border-3 border-primary-500 border-t-transparent rounded-full" />
@@ -1561,8 +1625,8 @@ export default function Revenda() {
             {naturezas.length === 0 ? (
               <div className="bg-surface rounded-2xl border border-border-custom p-8 text-center">
                 <p className="text-text-secondary">
-                  Cadastre seus produtos (ex: Picolé - Fruta no Palito, Gelo,
-                  Cachaça).
+                  Cadastre seus produtos (ex: PicolÃ© - Fruta no Palito, Gelo,
+                  CachaÃ§a).
                 </p>
               </div>
             ) : (
@@ -1583,7 +1647,7 @@ export default function Revenda() {
             {fornecedores.length === 0 ? (
               <div className="bg-surface rounded-2xl border border-border-custom p-8 text-center">
                 <p className="text-text-secondary">
-                  Cadastre seus fornecedores (distribuidoras, fábricas, etc).
+                  Cadastre seus fornecedores (distribuidoras, fÃ¡bricas, etc).
                 </p>
               </div>
             ) : (
@@ -1606,12 +1670,12 @@ export default function Revenda() {
                           <p className="text-xs text-text-disabled truncate">
                             {[f.contato_tipo, f.contato_nome, f.contato]
                               .filter(Boolean)
-                              .join(" · ")}
+                              .join(" Â· ")}
                           </p>
                         )}
                         {(f.bairro || f.cidade) && (
                           <p className="text-xs text-text-disabled truncate">
-                            {[f.bairro, f.cidade].filter(Boolean).join(" · ")}
+                            {[f.bairro, f.cidade].filter(Boolean).join(" Â· ")}
                           </p>
                         )}
                         {!f.contato_tipo &&
@@ -1726,12 +1790,12 @@ export default function Revenda() {
                           <p className="text-xs text-text-disabled truncate">
                             {[p.contato_tipo, p.contato_nome, p.contato]
                               .filter(Boolean)
-                              .join(" · ")}
+                              .join(" Â· ")}
                           </p>
                         )}
                         {(p.bairro || p.cidade) && (
                           <p className="text-xs text-text-disabled truncate">
-                            {[p.bairro, p.cidade].filter(Boolean).join(" · ")}
+                            {[p.bairro, p.cidade].filter(Boolean).join(" Â· ")}
                           </p>
                         )}
                         {!p.contato_tipo &&
@@ -1774,7 +1838,7 @@ export default function Revenda() {
       ) : movimentacoes.length === 0 ? (
         <div className="bg-surface rounded-2xl border border-border-custom p-8 text-center">
           <p className="text-text-secondary">
-            Nenhuma {tab === "entradas" ? "entrada" : "saída"} encontrada.
+            Nenhuma {tab === "entradas" ? "entrada" : "saÃ­da"} encontrada.
           </p>
         </div>
       ) : (
@@ -1786,7 +1850,6 @@ export default function Revenda() {
               pdvs={pdvs}
               produtos={naturezas}
               fornecedores={fornecedores}
-              onTogglePago={togglePago}
               onEdit={openEditMov}
               onDelete={(id) => confirmDelete(id, m._table)}
               onPagamento={openPagamento}
@@ -1795,9 +1858,9 @@ export default function Revenda() {
         </div>
       )}
 
-      {/* ══════════════════════════════════════════════════ */}
+      {/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */}
       {/* MODAIS                                            */}
-      {/* ══════════════════════════════════════════════════ */}
+      {/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */}
 
       {/* Novo Produto */}
       <Modal
@@ -1814,7 +1877,7 @@ export default function Revenda() {
               value={formNatureza.nome}
               onChange={(e) => setFormNatureza({ nome: e.target.value })}
               className="w-full rounded-lg border border-border-custom bg-bg px-3 py-2 text-sm"
-              placeholder="Ex: Picolé Chocolate, Gelo 5KG, Cachaça 1L"
+              placeholder="Ex: PicolÃ© Chocolate, Gelo 5KG, CachaÃ§a 1L"
             />
           </div>
           <div className="relative">
@@ -1857,7 +1920,7 @@ export default function Revenda() {
                 setTimeout(() => setShowProdNaturezaSugg(false), 150)
               }
               className="w-full rounded-lg border border-border-custom bg-bg px-3 py-2 text-sm"
-              placeholder="Ex: Gelo, Picolé, Bebida..."
+              placeholder="Ex: Gelo, PicolÃ©, Bebida..."
               autoComplete="off"
             />
             {showProdNaturezaSugg && prodNaturezaSuggestions.length > 0 && (
@@ -1876,6 +1939,38 @@ export default function Revenda() {
                 ))}
               </ul>
             )}
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-sm font-medium mb-1">DimensÃ£o</label>
+              <select
+                value={formNatureza.dimensao}
+                onChange={(e) =>
+                  setFormNatureza({ ...formNatureza, dimensao: e.target.value })
+                }
+                className="w-full rounded-lg border border-border-custom bg-bg px-3 py-2 text-sm"
+              >
+                <option value="">â€”</option>
+                <option value="Unidade">Unidade</option>
+                <option value="KG">KG</option>
+                <option value="Metro">Metro</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1">Tamanho</label>
+              <input
+                type="text"
+                inputMode="numeric"
+                pattern="[0-9]*"
+                value={formNatureza.tamanho}
+                onChange={(e) => {
+                  const val = e.target.value.replace(/[^0-9]/g, "");
+                  setFormNatureza({ ...formNatureza, tamanho: val });
+                }}
+                className="w-full rounded-lg border border-border-custom bg-bg px-3 py-2 text-sm"
+                placeholder="Ex: 5, 10, 20"
+              />
+            </div>
           </div>
           <button
             type="submit"
@@ -2083,7 +2178,7 @@ export default function Revenda() {
               />
             </div>
             <div>
-              <label className="block text-sm font-medium mb-1">Nº</label>
+              <label className="block text-sm font-medium mb-1">NÂº</label>
               <input
                 type="text"
                 value={formPdv.numero}
@@ -2095,7 +2190,7 @@ export default function Revenda() {
             </div>
           </div>
           <div>
-            <label className="block text-sm font-medium mb-1">Observação</label>
+            <label className="block text-sm font-medium mb-1">ObservaÃ§Ã£o</label>
             <input
               type="text"
               value={formPdv.observacao}
@@ -2132,7 +2227,7 @@ export default function Revenda() {
                 setFormFornecedor({ ...formFornecedor, nome: e.target.value })
               }
               className="w-full rounded-lg border border-border-custom bg-bg px-3 py-2 text-sm"
-              placeholder="Ex: Distribuidora X, Fábrica Y"
+              placeholder="Ex: Distribuidora X, FÃ¡brica Y"
             />
           </div>
           <div>
@@ -2279,7 +2374,7 @@ export default function Revenda() {
               />
             </div>
             <div>
-              <label className="block text-sm font-medium mb-1">Nº</label>
+              <label className="block text-sm font-medium mb-1">NÂº</label>
               <input
                 type="text"
                 value={formFornecedor.numero}
@@ -2294,7 +2389,7 @@ export default function Revenda() {
             </div>
           </div>
           <div>
-            <label className="block text-sm font-medium mb-1">Observação</label>
+            <label className="block text-sm font-medium mb-1">ObservaÃ§Ã£o</label>
             <input
               type="text"
               value={formFornecedor.observacao}
@@ -2317,7 +2412,7 @@ export default function Revenda() {
         </form>
       </Modal>
 
-      {/* ─── Nova Entrada ─── */}
+      {/* â”€â”€â”€ Nova Entrada â”€â”€â”€ */}
       <Modal
         open={modal === "entrada"}
         onClose={() => setModal(null)}
@@ -2369,7 +2464,7 @@ export default function Revenda() {
                     itens: [
                       ...formEntrada.itens,
                       {
-                        natureza_id: naturezas[0]?.id ?? "",
+                        produto_id: naturezas[0]?.id ?? "",
                         quantidade: "",
                         valor_compra_unitario: "",
                       },
@@ -2397,12 +2492,12 @@ export default function Revenda() {
                 >
                   <select
                     required
-                    value={item.natureza_id}
+                    value={item.produto_id}
                     onChange={(e) => {
                       const itens = [...formEntrada.itens];
                       itens[idx] = {
                         ...itens[idx],
-                        natureza_id: e.target.value,
+                        produto_id: e.target.value,
                       };
                       setFormEntrada({ ...formEntrada, itens });
                     }}
@@ -2501,11 +2596,11 @@ export default function Revenda() {
                 setFormEntrada({ ...formEntrada, nota_fiscal: e.target.value })
               }
               className="w-full rounded-lg border border-border-custom bg-bg px-3 py-2 text-sm"
-              placeholder="Número / referência"
+              placeholder="NÃºmero / referÃªncia"
             />
           </div>
           <div>
-            <label className="block text-sm font-medium mb-1">Observação</label>
+            <label className="block text-sm font-medium mb-1">ObservaÃ§Ã£o</label>
             <input
               type="text"
               value={formEntrada.observacao}
@@ -2525,11 +2620,11 @@ export default function Revenda() {
         </form>
       </Modal>
 
-      {/* ─── Nova Saída ─── */}
+      {/* â”€â”€â”€ Nova SaÃ­da â”€â”€â”€ */}
       <Modal
         open={modal === "saida"}
         onClose={() => setModal(null)}
-        title={editingMovId ? "Editar Saída" : "Nova Saída"}
+        title={editingMovId ? "Editar SaÃ­da" : "Nova SaÃ­da"}
       >
         <form onSubmit={handleSaveSaida} className="space-y-3">
           <div className="grid grid-cols-2 gap-3">
@@ -2577,7 +2672,7 @@ export default function Revenda() {
                     itens: [
                       ...formSaida.itens,
                       {
-                        natureza_id: naturezas[0]?.id ?? "",
+                        produto_id: naturezas[0]?.id ?? "",
                         quantidade: "",
                         valor_compra_unitario: "",
                         valor_venda_unitario: "",
@@ -2607,30 +2702,23 @@ export default function Revenda() {
                 >
                   <select
                     required
-                    value={item.natureza_id}
+                    value={item.produto_id}
                     onChange={(e) => {
                       const itens = [...formSaida.itens];
                       const selectedId = e.target.value;
-                      // Find last known purchase price for this product
-                      let lastCompra = "";
+                      // Use custo_unitario from product catalog
+                      let custoDefault = "";
                       if (selectedId) {
-                        for (const m of movimentacoes) {
-                          const found = (m.itens || []).find(
-                            (i) =>
-                              i.natureza_id === selectedId &&
-                              i.valor_compra_unitario,
-                          );
-                          if (found) {
-                            lastCompra = String(found.valor_compra_unitario);
-                            break;
-                          }
+                        const prod = naturezas.find((n) => n.id === selectedId);
+                        if (prod?.custo_unitario != null) {
+                          custoDefault = String(prod.custo_unitario);
                         }
                       }
                       itens[idx] = {
                         ...itens[idx],
-                        natureza_id: selectedId,
+                        produto_id: selectedId,
                         valor_compra_unitario:
-                          itens[idx].valor_compra_unitario || lastCompra,
+                          itens[idx].valor_compra_unitario || custoDefault,
                       };
                       setFormSaida({ ...formSaida, itens });
                     }}
@@ -2747,22 +2835,7 @@ export default function Revenda() {
           </div>
 
           <div>
-            <label className="block text-sm font-medium mb-1">
-              Valor acerto
-            </label>
-            <input
-              type="number"
-              step="0.01"
-              value={formSaida.valor_acerto}
-              onChange={(e) =>
-                setFormSaida({ ...formSaida, valor_acerto: e.target.value })
-              }
-              className="w-full rounded-lg border border-border-custom bg-bg px-3 py-2 text-sm"
-              placeholder="Se vazio, calcula soma (Qtd × Venda)"
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium mb-1">Observação</label>
+            <label className="block text-sm font-medium mb-1">ObservaÃ§Ã£o</label>
             <input
               type="text"
               value={formSaida.observacao}
@@ -2777,7 +2850,7 @@ export default function Revenda() {
             disabled={saving}
             className="w-full bg-primary-500 hover:bg-primary-600 disabled:opacity-50 text-white font-medium rounded-lg px-4 py-2.5 transition-colors"
           >
-            {saving ? "Salvando..." : "Salvar Saída"}
+            {saving ? "Salvando..." : "Salvar SaÃ­da"}
           </button>
         </form>
       </Modal>
@@ -2789,9 +2862,9 @@ export default function Revenda() {
         title="Quantidade negativa"
       >
         <p className="text-sm text-text-secondary mb-4">
-          Você informou uma quantidade negativa. Isso é uma{" "}
-          <strong>perda</strong> (produto danificado, não volta ao estoque) ou
-          uma <strong>devolução</strong> (produto retorna ao estoque)?
+          VocÃª informou uma quantidade negativa. Isso Ã© uma{" "}
+          <strong>perda</strong> (produto danificado, nÃ£o volta ao estoque) ou
+          uma <strong>devoluÃ§Ã£o</strong> (produto retorna ao estoque)?
         </p>
         <div className="flex flex-col gap-2">
           <button
@@ -2843,7 +2916,7 @@ export default function Revenda() {
                 setFormFormaPgto({ ...formFormaPgto, nome: e.target.value })
               }
               className="w-full px-3 py-2 rounded-lg border border-border-custom bg-surface-alt text-sm focus:outline-none focus:ring-2 focus:ring-primary-400"
-              placeholder="Ex: Pix, Dinheiro, Cartão..."
+              placeholder="Ex: Pix, Dinheiro, CartÃ£o..."
             />
           </div>
           <div className="flex gap-2 pt-2">
@@ -2865,7 +2938,7 @@ export default function Revenda() {
         </form>
       </Modal>
 
-      {/* Modal Pagamento (transações) */}
+      {/* Modal Pagamento (transaÃ§Ãµes) */}
       <Modal
         open={modal === "pagamento"}
         onClose={() => {
@@ -2898,7 +2971,7 @@ export default function Revenda() {
                 <div className="bg-surface-alt rounded-xl p-3 space-y-2">
                   <div className="flex items-center justify-between">
                     <span className="text-xs font-semibold text-text-secondary">
-                      {isEntrada ? "Entrada" : "Saída"}
+                      {isEntrada ? "Entrada" : "SaÃ­da"}
                       {!isEntrada &&
                         pagamentoMov.pdv_id &&
                         (() => {
@@ -2933,7 +3006,7 @@ export default function Revenda() {
                     <tbody>
                       {itens.map((it, idx) => {
                         const prod = naturezas.find(
-                          (n) => n.id === it.natureza_id,
+                          (n) => n.id === it.produto_id,
                         );
                         const unit = isEntrada
                           ? it.valor_compra_unitario || 0
@@ -2942,7 +3015,7 @@ export default function Revenda() {
                         return (
                           <tr key={idx}>
                             <td className="py-0.5 truncate max-w-[120px]">
-                              {prod?.nome || "—"}
+                              {prod?.nome || "â€”"}
                             </td>
                             <td className="py-0.5 text-right">
                               {it.quantidade}
@@ -2973,11 +3046,11 @@ export default function Revenda() {
                   )}
                 </div>
 
-                {/* Lista de transações */}
+                {/* Lista de transaÃ§Ãµes */}
                 {transacoes.length > 0 && (
                   <div className="space-y-1">
                     <p className="text-xs font-semibold text-text-secondary">
-                      Transações registradas
+                      TransaÃ§Ãµes registradas
                     </p>
                     {transacoes.map((t) => {
                       const fp = formasPagamento.find(
@@ -2993,7 +3066,7 @@ export default function Revenda() {
                               R$ {Number(t.valor).toFixed(2)}
                             </span>
                             <span className="text-text-disabled ml-2">
-                              {fp?.nome || "—"}
+                              {fp?.nome || "â€”"}
                             </span>
                             <span className="text-text-disabled ml-2 text-xs">
                               {t.data}
@@ -3011,13 +3084,13 @@ export default function Revenda() {
                   </div>
                 )}
 
-                {/* Form nova transação */}
+                {/* Form nova transaÃ§Ã£o */}
                 <form
                   onSubmit={handleSaveTransacao}
                   className="space-y-3 border-t border-border-custom pt-3"
                 >
                   <p className="text-xs font-semibold text-text-secondary">
-                    Nova transação
+                    Nova transaÃ§Ã£o
                   </p>
                   <div className="grid grid-cols-2 gap-2">
                     <div>
@@ -3034,7 +3107,7 @@ export default function Revenda() {
                         }
                         className="w-full px-2 py-1.5 rounded-lg border border-border-custom bg-surface-alt text-sm"
                       >
-                        <option value="">— Nenhuma —</option>
+                        <option value="">â€” Nenhuma â€”</option>
                         {formasPagamento.map((f) => (
                           <option key={f.id} value={f.id}>
                             {f.nome}
@@ -3081,7 +3154,7 @@ export default function Revenda() {
                   </div>
                   <div>
                     <label className="block text-xs text-text-disabled mb-0.5">
-                      Observação
+                      ObservaÃ§Ã£o
                     </label>
                     <input
                       value={formTransacao.observacao}
@@ -3100,7 +3173,7 @@ export default function Revenda() {
                     disabled={saving}
                     className="w-full py-2 rounded-lg bg-primary-500 hover:bg-primary-600 text-white text-sm font-medium transition-colors disabled:opacity-50"
                   >
-                    {saving ? "Salvando..." : "Registrar Transação"}
+                    {saving ? "Salvando..." : "Registrar TransaÃ§Ã£o"}
                   </button>
                 </form>
               </div>
@@ -3112,7 +3185,7 @@ export default function Revenda() {
       <Modal
         open={modal === "delete"}
         onClose={() => setModal(null)}
-        title="Confirmar remoção"
+        title="Confirmar remoÃ§Ã£o"
       >
         <ConfirmDelete
           message="Tem certeza que deseja remover este registro?"

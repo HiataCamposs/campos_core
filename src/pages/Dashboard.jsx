@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from "react";
+﻿import { useEffect, useState, useCallback } from "react";
 import { supabase } from "../lib/supabaseClient";
 import { useAuth } from "../contexts/AuthContext";
 import { Link } from "react-router-dom";
@@ -71,7 +71,7 @@ export default function Dashboard() {
         .gte("data", sevenDaysAgo),
       supabase
         .from("revenda_movimentacoes")
-        .select("tipo, natureza_id, quantidade")
+        .select("tipo, produto_id, quantidade")
         .is("deleted_at", null),
       supabase
         .from("revenda_produtos")
@@ -114,12 +114,12 @@ export default function Dashboard() {
       0,
     );
 
-    // Calcular estoque por produto (entradas - saídas)
+    // Calcular estoque por produto (entradas - saÃ­das)
     const estoqueMap = {};
     (revendaMovs || []).forEach((m) => {
-      if (!m.natureza_id) return;
-      if (!estoqueMap[m.natureza_id]) estoqueMap[m.natureza_id] = 0;
-      estoqueMap[m.natureza_id] +=
+      if (!m.produto_id) return;
+      if (!estoqueMap[m.produto_id]) estoqueMap[m.produto_id] = 0;
+      estoqueMap[m.produto_id] +=
         m.tipo === "entrada" ? m.quantidade : -m.quantidade;
     });
     const nomeMap = {};
@@ -152,7 +152,7 @@ export default function Dashboard() {
         .map(([nome, qty]) => ({ nome, qty }))
         .sort((a, b) => a.nome.localeCompare(b.nome)),
     );
-    // Gelo produção hoje (soma sacos)
+    // Gelo produÃ§Ã£o hoje (soma sacos)
     const totalProd = (geloProducaoData || []).reduce(
       (s, p) => s + Number(p.quantidade || 0),
       0,
@@ -168,7 +168,7 @@ export default function Dashboard() {
 
   const fmtMoney = (v) => `R$ ${Number(v).toFixed(2)}`;
   const fmtDate = (d) =>
-    d ? new Date(d + "T00:00:00").toLocaleDateString("pt-BR") : "—";
+    d ? new Date(d + "T00:00:00").toLocaleDateString("pt-BR") : "â€”";
 
   const cards = [
     {
@@ -176,7 +176,7 @@ export default function Dashboard() {
       icon: Snowflake,
       iconBg: "bg-accent-50",
       iconColor: "text-accent-500",
-      label: "Gelo · 7 dias",
+      label: "Gelo Â· 7 dias",
       value: `${geloProducaoHoje} sacos produzidos`,
       estoque: geloEstoque,
     },
@@ -189,8 +189,8 @@ export default function Dashboard() {
       label: "Revenda",
       value:
         stats.revendaPendentes > 0
-          ? `${stats.revendaPendentes} saídas pendentes`
-          : "Nenhuma pendência",
+          ? `${stats.revendaPendentes} saÃ­das pendentes`
+          : "Nenhuma pendÃªncia",
       estoque: revendaEstoque,
     },
     {
@@ -198,8 +198,8 @@ export default function Dashboard() {
       icon: Car,
       iconBg: "bg-accent-50",
       iconColor: "text-accent-500",
-      label: "Veículos",
-      value: `${stats.veiculosTotal} veículos`,
+      label: "VeÃ­culos",
+      value: `${stats.veiculosTotal} veÃ­culos`,
     },
     {
       to: "/lembretes",
@@ -208,7 +208,7 @@ export default function Dashboard() {
       iconColor:
         stats.lembretesAtrasados > 0 ? "text-error" : "text-primary-500",
       label: "Lembretes",
-      value: `${stats.lembretesAbertos} pendentes${stats.lembretesAtrasados > 0 ? ` · ${stats.lembretesAtrasados} atrasados` : ""}`,
+      value: `${stats.lembretesAbertos} pendentes${stats.lembretesAtrasados > 0 ? ` Â· ${stats.lembretesAtrasados} atrasados` : ""}`,
     },
   ];
 
@@ -222,11 +222,11 @@ export default function Dashboard() {
 
   return (
     <div className="space-y-6">
-      {/* Saudação */}
+      {/* SaudaÃ§Ã£o */}
       <div>
         <h1 className="text-2xl font-bold text-text-primary">Dashboard</h1>
         <p className="text-text-secondary text-sm mt-1">
-          Bem-vindo de volta! Aqui está seu resumo.
+          Bem-vindo de volta! Aqui estÃ¡ seu resumo.
         </p>
       </div>
 
@@ -271,13 +271,13 @@ export default function Dashboard() {
         ))}
       </div>
 
-      {/* Próximos lembretes */}
+      {/* PrÃ³ximos lembretes */}
       {proximosLembretes.length > 0 && (
         <div className="bg-surface rounded-2xl border border-border-custom p-5">
           <div className="flex items-center justify-between mb-3">
             <h2 className="font-semibold text-text-primary flex items-center gap-2">
               <CalendarClock size={16} />
-              Próximos lembretes
+              PrÃ³ximos lembretes
             </h2>
             <Link
               to="/lembretes"
@@ -297,7 +297,7 @@ export default function Dashboard() {
                 </span>
                 <span className="text-xs text-text-secondary shrink-0">
                   {l.data === today ? "Hoje" : fmtDate(l.data)}
-                  {l.hora ? ` · ${l.hora.slice(0, 5)}` : ""}
+                  {l.hora ? ` Â· ${l.hora.slice(0, 5)}` : ""}
                 </span>
               </div>
             ))}
@@ -313,7 +313,7 @@ export default function Dashboard() {
         >
           <AlertTriangle className="text-error shrink-0" size={20} />
           <p className="text-sm text-error font-medium">
-            Você tem {stats.lembretesAtrasados} lembrete
+            VocÃª tem {stats.lembretesAtrasados} lembrete
             {stats.lembretesAtrasados > 1 ? "s" : ""} atrasado
             {stats.lembretesAtrasados > 1 ? "s" : ""}!
           </p>
