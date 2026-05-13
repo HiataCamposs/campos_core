@@ -60,7 +60,7 @@ function FormProducao({ data, onChange, onSave, saving, funcionarios }) {
           setUltimaEmbalagem(null);
         }
       });
-  }, [data.tamanho]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [data.tamanho]);
 
   return (
     <form onSubmit={onSave} className="space-y-3">
@@ -582,6 +582,11 @@ function FormConsumo({ data, onChange, onSave, saving }) {
 // ── Página principal ───────────────────────────────────
 
 const today = new Date().toISOString().slice(0, 10);
+const TABLE_MAP = {
+  producao: "gelo_producao",
+  despesas: "gelo_despesas",
+  consumo: "gelo_consumo",
+};
 
 export default function Gelo() {
   const { user } = useAuth();
@@ -653,12 +658,6 @@ export default function Gelo() {
 
   const [form, setForm] = useState(emptyProducao);
 
-  const tableMap = {
-    producao: "gelo_producao",
-    despesas: "gelo_despesas",
-    consumo: "gelo_consumo",
-  };
-
   const fetchData = useCallback(async () => {
     setLoading(true);
     if (tab === "despesas") {
@@ -724,7 +723,7 @@ export default function Gelo() {
       setConsumoResumo({ days, logs: logsHoje });
     } else {
       const { data } = await supabase
-        .from(tableMap[tab])
+        .from(TABLE_MAP[tab])
         .select("*")
         .is("deleted_at", null)
         .order("data", { ascending: false })
@@ -757,6 +756,7 @@ export default function Gelo() {
     else setForm(emptyDespesa);
     setFiltroCategoria(new Set(allCategorias));
     setShowFiltro(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab]);
 
   // Register bottom tabs for mobile
@@ -783,7 +783,7 @@ export default function Gelo() {
     setSaving(true);
     const isConsumoCateg =
       form.categoria === "energia" || form.categoria === "agua";
-    const targetTable = tableMap[tab];
+    const targetTable = TABLE_MAP[tab];
     const payload = { ...form, user_id: user.id };
     // converter numéricos
     if (payload.quantidade) payload.quantidade = Number(payload.quantidade);
@@ -904,7 +904,7 @@ export default function Gelo() {
   const handleDelete = async () => {
     await dbOp(
       supabase
-        .from(tableMap[tab])
+        .from(TABLE_MAP[tab])
         .update({ deleted_at: new Date().toISOString() })
         .eq("id", deleteId),
       "remover",

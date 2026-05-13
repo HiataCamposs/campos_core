@@ -122,17 +122,6 @@ function MovCard({
     (s, i) => s + (i.quantidade || 0) * (i.valor_venda_unitario || 0),
     0,
   );
-  const firstProd =
-    itens.length > 0
-      ? produtos.find((n) => n.id === itens[0].produto_id)
-      : null;
-  const summary =
-    itens.length === 1
-      ? firstProd?.nome || "—"
-      : itens.length > 1
-        ? `${itens.length} produtos`
-        : "—";
-
   const Icon = isEntrada ? ArrowDownCircle : ArrowUpCircle;
   const statusColors = isEntrada
     ? {
@@ -331,7 +320,6 @@ export default function Revenda() {
   const [editingProdutoId, setEditingProdutoId] = useState(null);
   const [editingPdvId, setEditingPdvId] = useState(null);
   const [editingMovId, setEditingMovId] = useState(null);
-  const [editingMovTipo, setEditingMovTipo] = useState(null);
   const [perdaPrompt, setPerdaPrompt] = useState(false);
 
   // Data
@@ -551,16 +539,22 @@ export default function Revenda() {
     setMovimentacoes(all);
   }, [tab]);
 
-  const fetchAll = useCallback(async () => {
-    setLoading(true);
-    await Promise.all([
-      fetchNaturezas(),
-      fetchFornecedores(),
-      fetchPdvs(),
-      fetchMovimentacoes(),
-      fetchFormasPagamento(),
-    ]);
-    setLoading(false);
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      setLoading(true);
+      await Promise.all([
+        fetchNaturezas(),
+        fetchFornecedores(),
+        fetchPdvs(),
+        fetchMovimentacoes(),
+        fetchFormasPagamento(),
+      ]);
+      if (!cancelled) setLoading(false);
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, [
     fetchNaturezas,
     fetchFornecedores,
@@ -568,10 +562,6 @@ export default function Revenda() {
     fetchMovimentacoes,
     fetchFormasPagamento,
   ]);
-
-  useEffect(() => {
-    fetchAll();
-  }, [fetchAll]);
 
   // Register bottom tabs for mobile
   useEffect(() => {
@@ -945,7 +935,6 @@ export default function Revenda() {
     setSaving(false);
     setModal(null);
     setEditingMovId(null);
-    setEditingMovTipo(null);
     await fetchNaturezas();
     await fetchMovimentacoes();
   };
@@ -1072,7 +1061,6 @@ export default function Revenda() {
     setModal(null);
     setPerdaPrompt(false);
     setEditingMovId(null);
-    setEditingMovTipo(null);
     await fetchMovimentacoes();
   };
 
@@ -1276,7 +1264,13 @@ export default function Revenda() {
     setModal(null);
     setDeleteId(null);
     setDeleteTable(null);
-    await fetchAll();
+    await Promise.all([
+      fetchNaturezas(),
+      fetchFornecedores(),
+      fetchPdvs(),
+      fetchMovimentacoes(),
+      fetchFormasPagamento(),
+    ]);
   };
 
   const confirmDelete = (id, table) => {
@@ -1376,7 +1370,6 @@ export default function Revenda() {
 
   const openAddEntrada = () => {
     setEditingMovId(null);
-    setEditingMovTipo(null);
     setFormEntrada({
       data: today,
       fornecedor_id: fornecedores[0]?.id ?? "",
@@ -1395,7 +1388,6 @@ export default function Revenda() {
 
   const openAddSaida = () => {
     setEditingMovId(null);
-    setEditingMovTipo(null);
     setFormSaida({
       data: today,
       pdv_id: pdvs[0]?.id ?? "",
@@ -1417,7 +1409,6 @@ export default function Revenda() {
 
   const openEditMov = (m) => {
     setEditingMovId(m.id);
-    setEditingMovTipo(m._tipo);
     if (m._tipo === "entrada") {
       setFormEntrada({
         data: m.data || today,
