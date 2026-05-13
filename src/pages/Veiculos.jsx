@@ -417,6 +417,8 @@ export default function Veiculos() {
   const [editId, setEditId] = useState(null);
   const [editAbastId, setEditAbastId] = useState(null);
   const [editManutId, setEditManutId] = useState(null);
+  const [postos, setPostos] = useState([]);
+  const [locais, setLocais] = useState([]);
 
   const [latestKmMap, setLatestKmMap] = useState({});
 
@@ -487,6 +489,11 @@ export default function Veiculos() {
         .order("data", { ascending: false })
         .limit(50);
       setItems(data || []);
+      // Distinct postos for autocomplete
+      const unique = [
+        ...new Set((data || []).map((a) => a.posto).filter(Boolean)),
+      ];
+      setPostos(unique.sort());
     } else {
       const { data } = await supabase
         .from("veiculos_manutencoes")
@@ -495,6 +502,11 @@ export default function Veiculos() {
         .order("data", { ascending: false })
         .limit(50);
       setItems(data || []);
+      // Distinct locais for autocomplete
+      const uniqueLocais = [
+        ...new Set((data || []).map((m) => m.local).filter(Boolean)),
+      ];
+      setLocais(uniqueLocais.sort());
     }
     setLoading(false);
   }, [tab]);
@@ -560,27 +572,15 @@ export default function Veiculos() {
     e.preventDefault();
     setSaving(true);
     const litrosInput = Number(formAbast.litros) || 0;
-    const valorLitroInput = Number(formAbast.valor_litro) || 0;
     const totalInput = Number(formAbast.valor_total_input) || 0;
-    // Calcula campos derivados
-    let litros, valorLitro, valorTotal;
-    if (totalInput > 0 && litrosInput > 0) {
-      litros = litrosInput;
-      valorLitro = Math.round((totalInput / litrosInput) * 100) / 100;
-      valorTotal = totalInput;
-    } else if (totalInput > 0) {
-      litros = 0;
-      valorLitro = 0;
-      valorTotal = totalInput;
-    } else {
-      litros = litrosInput;
-      valorLitro = valorLitroInput;
-      valorTotal =
-        litros && valorLitro
-          ? Math.round(litros * valorLitro * 100) / 100
-          : null;
-    }
-    const { valor_total_input: _vt, ...rest } = formAbast;
+    // Calcula R$/L automaticamente
+    const litros = litrosInput;
+    const valorLitro =
+      totalInput > 0 && litrosInput > 0
+        ? Math.round((totalInput / litrosInput) * 100) / 100
+        : 0;
+    const valorTotal = totalInput || null;
+    const { valor_total_input: _vt, valor_litro: _vl, ...rest } = formAbast;
     const payload = {
       ...rest,
       km: formAbast.km ? Number(formAbast.km) : null,
@@ -699,11 +699,7 @@ export default function Veiculos() {
       setModal("veiculo");
     } else if (tab === "abastecimentos") {
       setFormAbast({
-        veiculo_id: veiculos[0]?.id ?? "",
-        data: today,
-        km: "",
-        litros: "",
-        valor_litro: "",
+        veiculo_id: veiculos.find((v) => !v.venda_data)?.id ?? "",
         valor_total_input: "",
         combustivel: "gasolina_comum",
         posto: "",
@@ -713,7 +709,7 @@ export default function Veiculos() {
       setModal("abast");
     } else {
       setFormManut({
-        veiculo_id: veiculos[0]?.id ?? "",
+        veiculo_id: veiculos.find((v) => !v.venda_data)?.id ?? "",
         data: today,
         km: "",
         descricao: "",
@@ -914,11 +910,13 @@ export default function Veiculos() {
               className="w-full rounded-lg border border-border-custom bg-bg px-3 py-2 text-sm"
             >
               <option value="">Selecione...</option>
-              {veiculos.map((v) => (
-                <option key={v.id} value={v.id}>
-                  {v.modelo} ({v.placa || "s/ placa"})
-                </option>
-              ))}
+              {veiculos
+                .filter((v) => !v.venda_data)
+                .map((v) => (
+                  <option key={v.id} value={v.id}>
+                    {v.modelo} ({v.placa || "s/ placa"})
+                  </option>
+                ))}
             </select>
           </div>
           <div className="grid grid-cols-2 gap-3">
@@ -947,26 +945,26 @@ export default function Veiculos() {
               />
             </div>
           </div>
-          <div>
-            <label className="block text-sm font-medium mb-1">
-              Valor total (R$)
-            </label>
-            <input
-              type="number"
-              step="0.01"
-              min="0"
-              value={formAbast.valor_total_input}
-              onChange={(e) =>
-                setFormAbast({
-                  ...formAbast,
-                  valor_total_input: e.target.value,
-                })
-              }
-              className="w-full rounded-lg border border-border-custom bg-bg px-3 py-2 text-sm"
-              placeholder="Ex: 150.00"
-            />
-          </div>
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-sm font-medium mb-1">
+                Valor total (R$)
+              </label>
+              <input
+                type="number"
+                step="0.01"
+                min="0"
+                value={formAbast.valor_total_input}
+                onChange={(e) =>
+                  setFormAbast({
+                    ...formAbast,
+                    valor_total_input: e.target.value,
+                  })
+                }
+                className="w-full rounded-lg border border-border-custom bg-bg px-3 py-2 text-sm"
+                placeholder="Ex: 150.00"
+              />
+            </div>
             <div>
               <label className="block text-sm font-medium mb-1">Litros</label>
               <input
@@ -981,20 +979,8 @@ export default function Veiculos() {
                 placeholder="Opcional"
               />
             </div>
-            <div>
-              <label className="block text-sm font-medium mb-1">R$/L</label>
-              <input
-                type="number"
-                step="0.01"
-                min="0"
-                value={formAbast.valor_litro}
-                onChange={(e) =>
-                  setFormAbast({ ...formAbast, valor_litro: e.target.value })
-                }
-                className="w-full rounded-lg border border-border-custom bg-bg px-3 py-2 text-sm"
-                placeholder="Opcional"
-              />
-            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-sm font-medium mb-1">Comb.</label>
               <select
@@ -1013,12 +999,18 @@ export default function Veiculos() {
             <label className="block text-sm font-medium mb-1">Posto</label>
             <input
               type="text"
+              list="postos-list"
               value={formAbast.posto}
               onChange={(e) =>
                 setFormAbast({ ...formAbast, posto: e.target.value })
               }
               className="w-full rounded-lg border border-border-custom bg-bg px-3 py-2 text-sm"
             />
+            <datalist id="postos-list">
+              {postos.map((p) => (
+                <option key={p} value={p} />
+              ))}
+            </datalist>
           </div>
           <button
             type="submit"
@@ -1048,11 +1040,13 @@ export default function Veiculos() {
               className="w-full rounded-lg border border-border-custom bg-bg px-3 py-2 text-sm"
             >
               <option value="">Selecione...</option>
-              {veiculos.map((v) => (
-                <option key={v.id} value={v.id}>
-                  {v.modelo} ({v.placa || "s/ placa"})
-                </option>
-              ))}
+              {veiculos
+                .filter((v) => !v.venda_data)
+                .map((v) => (
+                  <option key={v.id} value={v.id}>
+                    {v.modelo} ({v.placa || "s/ placa"})
+                  </option>
+                ))}
             </select>
           </div>
           <div className="grid grid-cols-2 gap-3">
@@ -1086,12 +1080,18 @@ export default function Veiculos() {
               <label className="block text-sm font-medium mb-1">Local</label>
               <input
                 type="text"
+                list="locais-list"
                 value={formManut.local}
                 onChange={(e) =>
                   setFormManut({ ...formManut, local: e.target.value })
                 }
                 className="w-full rounded-lg border border-border-custom bg-bg px-3 py-2 text-sm"
               />
+              <datalist id="locais-list">
+                {locais.map((l) => (
+                  <option key={l} value={l} />
+                ))}
+              </datalist>
             </div>
             <div>
               <label className="block text-sm font-medium mb-1">Valor</label>

@@ -1,4 +1,4 @@
-﻿import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { supabase } from "../lib/supabaseClient";
 import { useAuth } from "../contexts/AuthContext";
 import { Link } from "react-router-dom";
@@ -31,6 +31,9 @@ export default function Dashboard() {
   const [geloEstoque, setGeloEstoque] = useState([]);
   const [geloProducaoHoje, setGeloProducaoHoje] = useState(0);
   const [proximosLembretes, setProximosLembretes] = useState([]);
+  const [lastAbastData, setLastAbastData] = useState(null);
+  const [lastManutData, setLastManutData] = useState(null);
+  const [veiculosInfo, setVeiculosInfo] = useState([]);
   const [loading, setLoading] = useState(true);
 
   const fetchStats = useCallback(async () => {
@@ -44,10 +47,13 @@ export default function Dashboard() {
       { data: revendaMovs },
       { data: revendaNaturezas },
       { count: revendaPendentes },
-      { count: veiculosTotal },
+      { data: veiculosData },
       { count: lembretesAbertos },
       { count: lembretesAtrasados },
       { data: proxLembretes },
+      { data: lastAbast },
+      { data: lastManut },
+      { data: allAbast },
     ] = await Promise.all([
       supabase
         .from("gelo_producao")
@@ -85,7 +91,7 @@ export default function Dashboard() {
         .eq("status_pagamento", "pendente"),
       supabase
         .from("veiculos")
-        .select("*", { count: "exact", head: true })
+        .select("id, modelo, placa, venda_data, created_at")
         .is("deleted_at", null),
       supabase
         .from("lembretes")
@@ -107,6 +113,23 @@ export default function Dashboard() {
         .order("data")
         .order("hora", { nullsFirst: false })
         .limit(5),
+      supabase
+        .from("veiculos_abastecimentos")
+        .select("data")
+        .is("deleted_at", null)
+        .order("data", { ascending: false })
+        .limit(1),
+      supabase
+        .from("veiculos_manutencoes")
+        .select("data")
+        .is("deleted_at", null)
+        .order("data", { ascending: false })
+        .limit(1),
+      supabase
+        .from("veiculos_abastecimentos")
+        .select("veiculo_id, data, km, litros")
+        .is("deleted_at", null)
+        .order("data", { ascending: true }),
     ]);
 
     const vendasHoje = (geloVendas || []).reduce(
@@ -114,7 +137,7 @@ export default function Dashboard() {
       0,
     );
 
-    // Calcular estoque por produto (entradas - saÃ­das)
+    // Calcular estoque por produto (entradas - saídas)
     const estoqueMap = {};
     (revendaMovs || []).forEach((m) => {
       if (!m.produto_id) return;
@@ -135,7 +158,7 @@ export default function Dashboard() {
       geloHoje: geloHoje || 0,
       geloVendasHoje: vendasHoje,
       revendaPendentes: revendaPendentes || 0,
-      veiculosTotal: veiculosTotal || 0,
+      veiculosTotal: (veiculosData || []).length,
       lembretesAbertos: lembretesAbertos || 0,
       lembretesAtrasados: lembretesAtrasados || 0,
     });
@@ -152,13 +175,49 @@ export default function Dashboard() {
         .map(([nome, qty]) => ({ nome, qty }))
         .sort((a, b) => a.nome.localeCompare(b.nome)),
     );
-    // Gelo produÃ§Ã£o hoje (soma sacos)
+    // Gelo produção hoje (soma sacos)
     const totalProd = (geloProducaoData || []).reduce(
       (s, p) => s + Number(p.quantidade || 0),
       0,
     );
     setGeloProducaoHoje(totalProd);
     setProximosLembretes(proxLembretes || []);
+    // Last abastecimento/manutencao dates
+    if (lastAbast && lastAbast.length > 0) setLastAbastData(lastAbast[0].data);
+    if (lastManut && lastManut.length > 0) setLastManutData(lastManut[0].data);
+    // Build veiculosInfo for non-sold vehicles
+    const activeVeiculos = (veiculosData || []).filter((v) => !v.venda_data);
+    const abastByVeiculo = {};
+    (allAbast || []).forEach((a) => {
+      if (!abastByVeiculo[a.veiculo_id]) abastByVeiculo[a.veiculo_id] = [];
+      abastByVeiculo[a.veiculo_id].push(a);
+    });
+    const vInfo = activeVeiculos.map((v) => {
+      const abasts = (abastByVeiculo[v.id] || []).filter((a) => a.km != null);
+      // km/L: total km driven / total litros
+      let kmLitro = null;
+      if (abasts.length >= 2) {
+        const totalLitros = abasts
+          .slice(1)
+          .reduce((s, a) => s + (Number(a.litros) || 0), 0);
+        const kmDriven =
+          Number(abasts[abasts.length - 1].km) - Number(abasts[0].km);
+        if (totalLitros > 0 && kmDriven > 0)
+          kmLitro = (kmDriven / totalLitros).toFixed(1);
+      }
+      // km/mês: (last km - first km) / months between
+      let kmMes = null;
+      if (abasts.length >= 2) {
+        const first = new Date(abasts[0].data + "T00:00:00");
+        const last = new Date(abasts[abasts.length - 1].data + "T00:00:00");
+        const months = (last - first) / (30.44 * 86400000);
+        const kmDriven =
+          Number(abasts[abasts.length - 1].km) - Number(abasts[0].km);
+        if (months > 0 && kmDriven > 0) kmMes = Math.round(kmDriven / months);
+      }
+      return { id: v.id, modelo: v.modelo, placa: v.placa, kmLitro, kmMes };
+    });
+    setVeiculosInfo(vInfo);
     setLoading(false);
   }, []);
 
@@ -168,7 +227,7 @@ export default function Dashboard() {
 
   const fmtMoney = (v) => `R$ ${Number(v).toFixed(2)}`;
   const fmtDate = (d) =>
-    d ? new Date(d + "T00:00:00").toLocaleDateString("pt-BR") : "â€”";
+    d ? new Date(d + "T00:00:00").toLocaleDateString("pt-BR") : "—";
 
   const cards = [
     {
@@ -176,7 +235,7 @@ export default function Dashboard() {
       icon: Snowflake,
       iconBg: "bg-accent-50",
       iconColor: "text-accent-500",
-      label: "Gelo Â· 7 dias",
+      label: "Gelo · 7 dias",
       value: `${geloProducaoHoje} sacos produzidos`,
       estoque: geloEstoque,
     },
@@ -189,8 +248,8 @@ export default function Dashboard() {
       label: "Revenda",
       value:
         stats.revendaPendentes > 0
-          ? `${stats.revendaPendentes} saÃ­das pendentes`
-          : "Nenhuma pendÃªncia",
+          ? `${stats.revendaPendentes} saídas pendentes`
+          : "Nenhuma pendência",
       estoque: revendaEstoque,
     },
     {
@@ -198,8 +257,41 @@ export default function Dashboard() {
       icon: Car,
       iconBg: "bg-accent-50",
       iconColor: "text-accent-500",
-      label: "VeÃ­culos",
-      value: `${stats.veiculosTotal} veÃ­culos`,
+      label: "Veículos",
+      value: "",
+      extra: (
+        <div className="mt-1.5 space-y-1">
+          {veiculosInfo.map((v) => (
+            <div key={v.id} className="flex gap-2 items-center text-xs">
+              <span className="font-semibold text-text-primary truncate">
+                {v.modelo}
+              </span>
+              <span className="text-text-secondary whitespace-nowrap">
+                {v.kmLitro ?? "—"}{" "}
+                <span className="text-text-disabled">km/L</span>
+              </span>
+              <span className="text-text-secondary whitespace-nowrap">
+                {v.kmMes != null ? v.kmMes.toLocaleString("pt-BR") : "—"}{" "}
+                <span className="text-text-disabled">km/mês</span>
+              </span>
+            </div>
+          ))}
+          <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-1">
+            <span className="text-xs text-text-secondary">
+              Últ. abast.:{" "}
+              <span className="font-semibold text-text-primary">
+                {lastAbastData ? fmtDate(lastAbastData) : "—"}
+              </span>
+            </span>
+            <span className="text-xs text-text-secondary">
+              Últ. manut.:{" "}
+              <span className="font-semibold text-text-primary">
+                {lastManutData ? fmtDate(lastManutData) : "—"}
+              </span>
+            </span>
+          </div>
+        </div>
+      ),
     },
     {
       to: "/lembretes",
@@ -208,7 +300,7 @@ export default function Dashboard() {
       iconColor:
         stats.lembretesAtrasados > 0 ? "text-error" : "text-primary-500",
       label: "Lembretes",
-      value: `${stats.lembretesAbertos} pendentes${stats.lembretesAtrasados > 0 ? ` Â· ${stats.lembretesAtrasados} atrasados` : ""}`,
+      value: `${stats.lembretesAbertos} pendentes${stats.lembretesAtrasados > 0 ? ` · ${stats.lembretesAtrasados} atrasados` : ""}`,
     },
   ];
 
@@ -222,11 +314,11 @@ export default function Dashboard() {
 
   return (
     <div className="space-y-6">
-      {/* SaudaÃ§Ã£o */}
+      {/* Saudação */}
       <div>
         <h1 className="text-2xl font-bold text-text-primary">Dashboard</h1>
         <p className="text-text-secondary text-sm mt-1">
-          Bem-vindo de volta! Aqui estÃ¡ seu resumo.
+          Bem-vindo de volta! Aqui está seu resumo.
         </p>
       </div>
 
@@ -245,9 +337,11 @@ export default function Dashboard() {
             </div>
             <div className="flex-1 min-w-0">
               <p className="text-sm text-text-secondary">{card.label}</p>
-              <p className="text-base font-semibold text-text-primary truncate">
-                {card.value}
-              </p>
+              {card.value && (
+                <p className="text-base font-semibold text-text-primary truncate">
+                  {card.value}
+                </p>
+              )}
               {card.estoque && card.estoque.length > 0 && (
                 <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-0.5">
                   {card.estoque.map((e) => (
@@ -262,6 +356,7 @@ export default function Dashboard() {
                   ))}
                 </div>
               )}
+              {card.extra}
             </div>
             <ArrowRight
               size={16}
@@ -271,13 +366,13 @@ export default function Dashboard() {
         ))}
       </div>
 
-      {/* PrÃ³ximos lembretes */}
+      {/* Próximos lembretes */}
       {proximosLembretes.length > 0 && (
         <div className="bg-surface rounded-2xl border border-border-custom p-5">
           <div className="flex items-center justify-between mb-3">
             <h2 className="font-semibold text-text-primary flex items-center gap-2">
               <CalendarClock size={16} />
-              PrÃ³ximos lembretes
+              Próximos lembretes
             </h2>
             <Link
               to="/lembretes"
@@ -297,7 +392,7 @@ export default function Dashboard() {
                 </span>
                 <span className="text-xs text-text-secondary shrink-0">
                   {l.data === today ? "Hoje" : fmtDate(l.data)}
-                  {l.hora ? ` Â· ${l.hora.slice(0, 5)}` : ""}
+                  {l.hora ? ` · ${l.hora.slice(0, 5)}` : ""}
                 </span>
               </div>
             ))}
@@ -313,7 +408,7 @@ export default function Dashboard() {
         >
           <AlertTriangle className="text-error shrink-0" size={20} />
           <p className="text-sm text-error font-medium">
-            VocÃª tem {stats.lembretesAtrasados} lembrete
+            Você tem {stats.lembretesAtrasados} lembrete
             {stats.lembretesAtrasados > 1 ? "s" : ""} atrasado
             {stats.lembretesAtrasados > 1 ? "s" : ""}!
           </p>

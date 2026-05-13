@@ -1,4 +1,4 @@
-﻿import { useEffect, useState, useCallback, useMemo } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import { supabase } from "../lib/supabaseClient";
 import { useBottomTabs } from "../contexts/BottomTabsContext";
 import {
@@ -32,10 +32,10 @@ function diffDays(dateStr) {
 }
 
 function fmtDate(d) {
-  return d ? new Date(d + "T00:00:00").toLocaleDateString("pt-BR") : "â€”";
+  return d ? new Date(d + "T00:00:00").toLocaleDateString("pt-BR") : "—";
 }
 
-// â”€â”€ Risk score: 0 (safe) â†’ 100 (critical) â”€â”€
+// ── Risk score: 0 (safe) → 100 (critical) ──
 function calcRiskScore(daysSince, avgInterval) {
   if (!avgInterval || avgInterval <= 0) return daysSince > 7 ? 80 : 40;
   const ratio = daysSince / avgInterval;
@@ -51,7 +51,7 @@ function calcRiskScore(daysSince, avgInterval) {
 function riskLabel(score) {
   if (score >= 80)
     return {
-      text: "CrÃ­tico",
+      text: "Crítico",
       color: "text-red-600",
       bg: "bg-red-500/10",
       border: "border-red-500/40",
@@ -59,7 +59,7 @@ function riskLabel(score) {
     };
   if (score >= 60)
     return {
-      text: "AtenÃ§Ã£o",
+      text: "Atenção",
       color: "text-amber-600",
       bg: "bg-amber-500/10",
       border: "border-amber-500/40",
@@ -82,7 +82,7 @@ function riskLabel(score) {
   };
 }
 
-// â”€â”€ PDV Analytics Card â”€â”€
+// ── PDV Analytics Card ──
 function PdvCard({ pdv, onContact }) {
   const [open, setOpen] = useState(false);
   const risk = riskLabel(pdv.riskScore);
@@ -141,9 +141,9 @@ function PdvCard({ pdv, onContact }) {
                   {pdv.daysSince}d sem comprar
                 </span>
                 {pdv.avgInterval > 0 && (
-                  <> Â· ciclo ~{Math.round(pdv.avgInterval)}d</>
+                  <> · ciclo ~{Math.round(pdv.avgInterval)}d</>
                 )}
-                {pdv.totalQty > 0 && <> Â· {pdv.totalQty} un total</>}
+                {pdv.totalQty > 0 && <> · {pdv.totalQty} un total</>}
               </>
             )}
           </p>
@@ -170,28 +170,28 @@ function PdvCard({ pdv, onContact }) {
           <div className="grid grid-cols-2 gap-3">
             <div className="bg-surface-alt rounded-lg p-2.5">
               <p className="text-[10px] text-text-disabled mb-0.5">
-                Ãšltima compra
+                Última compra
               </p>
               <p className="text-sm font-semibold">
-                {pdv.lastDate ? fmtDate(pdv.lastDate) : "â€”"}
+                {pdv.lastDate ? fmtDate(pdv.lastDate) : "—"}
               </p>
             </div>
             <div className="bg-surface-alt rounded-lg p-2.5">
               <p className="text-[10px] text-text-disabled mb-0.5">
-                PrevisÃ£o prÃ³xima
+                Previsão próxima
               </p>
               <p
                 className={`text-sm font-semibold ${isOverdue ? "text-red-500" : ""}`}
               >
-                {predictedDate ? fmtDate(predictedDate) : "â€”"}
+                {predictedDate ? fmtDate(predictedDate) : "—"}
               </p>
             </div>
             <div className="bg-surface-alt rounded-lg p-2.5">
               <p className="text-[10px] text-text-disabled mb-0.5">
-                Qtd mÃ©dia/compra
+                Qtd média/compra
               </p>
               <p className="text-sm font-semibold">
-                {pdv.avgQty > 0 ? `${Math.round(pdv.avgQty)} un` : "â€”"}
+                {pdv.avgQty > 0 ? `${Math.round(pdv.avgQty)} un` : "—"}
               </p>
             </div>
             <div className="bg-surface-alt rounded-lg p-2.5">
@@ -202,12 +202,12 @@ function PdvCard({ pdv, onContact }) {
             </div>
             <div className="bg-surface-alt rounded-lg p-2.5">
               <p className="text-[10px] text-text-disabled mb-0.5">
-                Ticket mÃ©dio
+                Ticket médio
               </p>
               <p className="text-sm font-semibold">
                 {pdv.avgTicket > 0
                   ? `R$ ${pdv.avgTicket.toFixed(2).replace(".", ",")}`
-                  : "â€”"}
+                  : "—"}
               </p>
             </div>
             <div className="bg-surface-alt rounded-lg p-2.5">
@@ -217,7 +217,7 @@ function PdvCard({ pdv, onContact }) {
               <p className="text-sm font-semibold">
                 {pdv.totalRevenue > 0
                   ? `R$ ${pdv.totalRevenue.toFixed(2).replace(".", ",")}`
-                  : "â€”"}
+                  : "—"}
               </p>
             </div>
           </div>
@@ -226,7 +226,7 @@ function PdvCard({ pdv, onContact }) {
           {pdv.recentSales.length > 0 && (
             <div>
               <p className="text-[10px] text-text-disabled mb-1.5 font-medium">
-                ÃšLTIMAS COMPRAS
+                ÚLTIMAS COMPRAS
               </p>
               <div className="space-y-1">
                 {pdv.recentSales.slice(0, 5).map((s, i) => (
@@ -238,7 +238,7 @@ function PdvCard({ pdv, onContact }) {
                       {fmtDate(s.data)}
                     </span>
                     <span className="text-text-primary font-medium">
-                      {s.quantidade}x Â· R${" "}
+                      {s.quantidade}x · R${" "}
                       {((s.valor_venda_unitario || 0) * s.quantidade)
                         .toFixed(2)
                         .replace(".", ",")}
@@ -282,8 +282,8 @@ function PdvCard({ pdv, onContact }) {
   );
 }
 
-// â”€â”€ Main Page â”€â”€
-export default function Reposicao() {
+// ── Main Page ──
+export default function Reposicao({ embedded = false }) {
   const { setTabs } = useBottomTabs();
   const [loading, setLoading] = useState(true);
   const [pdvs, setPdvs] = useState([]);
@@ -296,9 +296,10 @@ export default function Reposicao() {
 
   // Bottom tabs (mobile)
   useEffect(() => {
+    if (embedded) return;
     setTabs(null);
     return () => setTabs(null);
-  }, [setTabs]);
+  }, [setTabs, embedded]);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -353,7 +354,7 @@ export default function Reposicao() {
     fetchData();
   }, [fetchData]);
 
-  // â”€â”€ Unique product naturezas for filter â”€â”€
+  // ── Unique product naturezas for filter ──
   const naturezaOptions = useMemo(() => {
     const unique = [
       ...new Set(produtos.map((p) => p.natureza).filter(Boolean)),
@@ -361,7 +362,7 @@ export default function Reposicao() {
     return unique.sort((a, b) => a.localeCompare(b));
   }, [produtos]);
 
-  // â”€â”€ Filtered saidas by product natureza â”€â”€
+  // ── Filtered saidas by product natureza ──
   const filteredSaidas = useMemo(() => {
     if (!filtroNatureza) return saidas;
     const prodIds = new Set(
@@ -370,7 +371,7 @@ export default function Reposicao() {
     return saidas.filter((s) => prodIds.has(s.produto_id));
   }, [saidas, produtos, filtroNatureza]);
 
-  // â”€â”€ Build analytics per PDV â”€â”€
+  // ── Build analytics per PDV ──
   const analytics = useMemo(() => {
     return pdvs.map((pdv) => {
       const sales = filteredSaidas
@@ -421,7 +422,7 @@ export default function Reposicao() {
     });
   }, [pdvs, filteredSaidas, contatos]);
 
-  // â”€â”€ Filtered & sorted list â”€â”€
+  // ── Filtered & sorted list ──
   const filtered = useMemo(() => {
     let list = [...analytics];
     if (filtro === "critico") list = list.filter((p) => p.riskScore >= 80);
@@ -435,7 +436,7 @@ export default function Reposicao() {
     );
   }, [analytics, filtro]);
 
-  // â”€â”€ KPIs â”€â”€
+  // ── KPIs ──
   const kpis = useMemo(() => {
     const criticos = analytics.filter((p) => p.riskScore >= 80).length;
     const atencao = analytics.filter(
@@ -449,7 +450,7 @@ export default function Reposicao() {
   const handleContact = (pdv) => {
     // placeholder for future scheduling feature
     alert(
-      `Agendar reposiÃ§Ã£o para ${pdv.nome}\nPrevisÃ£o: ciclo de ~${Math.round(pdv.avgInterval || 0)} dias`,
+      `Agendar reposição para ${pdv.nome}\nPrevisão: ciclo de ~${Math.round(pdv.avgInterval || 0)} dias`,
     );
   };
 
@@ -465,13 +466,13 @@ export default function Reposicao() {
     { key: "todos", label: "Todos", count: kpis.total },
     {
       key: "critico",
-      label: "CrÃ­ticos",
+      label: "Críticos",
       count: kpis.criticos,
       color: "text-red-600",
     },
     {
       key: "atencao",
-      label: "AtenÃ§Ã£o",
+      label: "Atenção",
       count: kpis.atencao,
       color: "text-amber-600",
     },
@@ -493,19 +494,21 @@ export default function Reposicao() {
   return (
     <div className="space-y-4">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <Zap className="text-amber-500" size={22} />
-          <h1 className="text-xl font-bold text-text-primary">ReposiÃ§Ã£o</h1>
+      {!embedded && (
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Zap className="text-amber-500" size={22} />
+            <h1 className="text-xl font-bold text-text-primary">Reposição</h1>
+          </div>
+          <button
+            onClick={fetchData}
+            className="p-2 rounded-lg hover:bg-surface-alt text-text-disabled hover:text-primary-500 transition-colors"
+            title="Atualizar"
+          >
+            <RefreshCw size={18} />
+          </button>
         </div>
-        <button
-          onClick={fetchData}
-          className="p-2 rounded-lg hover:bg-surface-alt text-text-disabled hover:text-primary-500 transition-colors"
-          title="Atualizar"
-        >
-          <RefreshCw size={18} />
-        </button>
-      </div>
+      )}
 
       {/* KPI Cards */}
       <div className="grid grid-cols-2 gap-3">
@@ -521,7 +524,7 @@ export default function Reposicao() {
               {kpis.criticos}
             </span>
           </div>
-          <p className="text-[10px] text-text-disabled font-medium">CRÃTICOS</p>
+          <p className="text-[10px] text-text-disabled font-medium">CRÍTICOS</p>
         </button>
 
         <button
@@ -536,7 +539,7 @@ export default function Reposicao() {
               {kpis.atencao}
             </span>
           </div>
-          <p className="text-[10px] text-text-disabled font-medium">ATENÃ‡ÃƒO</p>
+          <p className="text-[10px] text-text-disabled font-medium">ATENÇÃO</p>
         </button>
 
         <button
@@ -576,7 +579,7 @@ export default function Reposicao() {
         <div className="bg-surface rounded-xl border border-border-custom p-3">
           <div className="flex items-center justify-between mb-2">
             <p className="text-xs font-medium text-text-secondary">
-              DistribuiÃ§Ã£o de risco
+              Distribuição de risco
             </p>
             <p className="text-[10px] text-text-disabled">
               {analytics.length} PDVs
@@ -616,10 +619,10 @@ export default function Reposicao() {
           </div>
           <div className="flex justify-between mt-1.5 text-[9px] text-text-disabled">
             <span className="flex items-center gap-1">
-              <span className="w-1.5 h-1.5 rounded-full bg-red-500" /> CrÃ­tico
+              <span className="w-1.5 h-1.5 rounded-full bg-red-500" /> Crítico
             </span>
             <span className="flex items-center gap-1">
-              <span className="w-1.5 h-1.5 rounded-full bg-amber-400" /> AtenÃ§Ã£o
+              <span className="w-1.5 h-1.5 rounded-full bg-amber-400" /> Atenção
             </span>
             <span className="flex items-center gap-1">
               <span className="w-1.5 h-1.5 rounded-full bg-sky-400" /> Monitorar

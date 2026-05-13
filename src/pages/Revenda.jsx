@@ -1,4 +1,4 @@
-﻿import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { supabase } from "../lib/supabaseClient";
 import { useAuth } from "../contexts/AuthContext";
 import { useBottomTabs } from "../contexts/BottomTabsContext";
@@ -24,12 +24,14 @@ import {
   X,
   Wallet,
   DollarSign,
+  Zap,
 } from "lucide-react";
+import Reposicao from "./Reposicao";
 
 const today = new Date().toISOString().slice(0, 10);
 
-// â”€â”€ Helper: supabase mutation with error handling â”€â”€
-const dbOp = async (query, label = "OperaÃ§Ã£o") => {
+// ── Helper: supabase mutation with error handling ──
+const dbOp = async (query, label = "Operação") => {
   const res = await query;
   if (res.error) {
     console.error(`[${label}]`, res.error);
@@ -41,19 +43,20 @@ const dbOp = async (query, label = "OperaÃ§Ã£o") => {
 
 const TABS = [
   { key: "entradas", label: "Entradas", icon: ArrowDownCircle },
-  { key: "saidas", label: "SaÃ­das", icon: ArrowUpCircle },
+  { key: "saidas", label: "Saídas", icon: ArrowUpCircle },
+  { key: "reposicao", label: "Reposição", icon: Zap },
   { key: "cadastro", label: "Cadastro", icon: Package },
 ];
 
 const fmtMoney = (v) =>
   v != null && v !== ""
     ? `R$ ${Number(v).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`
-    : "â€”";
+    : "—";
 
 const fmtDate = (d) =>
-  d ? new Date(d + "T00:00:00").toLocaleDateString("pt-BR") : "â€”";
+  d ? new Date(d + "T00:00:00").toLocaleDateString("pt-BR") : "—";
 
-// â”€â”€ Produto Card â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Produto Card ────────────
 
 function ProdutoCard({ produto, onEdit, onDelete }) {
   return (
@@ -91,7 +94,7 @@ function ProdutoCard({ produto, onEdit, onDelete }) {
   );
 }
 
-// â”€â”€ MovimentaÃ§Ã£o Card â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Movimentação Card ──────────────────────────────────
 
 function MovCard({
   mov,
@@ -106,8 +109,7 @@ function MovCard({
   const isEntrada = mov._tipo === "entrada";
   const pdv = pdvs.find((p) => p.id === mov.pdv_id);
   const forn = fornecedores.find((f) => f.id === mov.fornecedor_id);
-  const pago = mov.status_pagamento === "pago";
-  const parcial = mov.status_pagamento === "parcial";
+  const sp = mov.status_pagamento; // pendente | parcial | pago
   const itens = mov.itens || [];
 
   // Summaries
@@ -126,39 +128,42 @@ function MovCard({
       : null;
   const summary =
     itens.length === 1
-      ? firstProd?.nome || "â€”"
+      ? firstProd?.nome || "—"
       : itens.length > 1
         ? `${itens.length} produtos`
-        : "â€”";
+        : "—";
 
   const Icon = isEntrada ? ArrowDownCircle : ArrowUpCircle;
-  const colorClass = isEntrada
-    ? "text-accent-500"
+  const statusColors = isEntrada
+    ? {
+        color: "text-accent-500",
+        bg: "bg-accent-50",
+        border: "border-accent-500/30",
+      }
     : mov.is_perda
-      ? "text-error"
-      : pago
-        ? "text-success"
-        : parcial
-          ? "text-warning"
-          : "text-error/70";
-  const bgClass = isEntrada
-    ? "bg-accent-50"
-    : mov.is_perda
-      ? "bg-error/10"
-      : pago
-        ? "bg-success/10"
-        : parcial
-          ? "bg-warning/10"
-          : "bg-error/5";
-  const borderClass = isEntrada
-    ? "border-accent-500/30"
-    : mov.is_perda
-      ? "border-error/30"
-      : pago
-        ? "border-success/30"
-        : parcial
-          ? "border-warning/30"
-          : "border-error/20";
+      ? {
+          color: "text-neutral-400",
+          bg: "bg-neutral-100",
+          border: "border-neutral-300",
+        }
+      : sp === "pago"
+        ? {
+            color: "text-success",
+            bg: "bg-success/10",
+            border: "border-success/30",
+          }
+        : sp === "parcial"
+          ? {
+              color: "text-warning",
+              bg: "bg-warning/10",
+              border: "border-warning/30",
+            }
+          : {
+              color: "text-error/70",
+              bg: "bg-error/5",
+              border: "border-error/20",
+            };
+  const { color: colorClass, bg: bgClass, border: borderClass } = statusColors;
 
   return (
     <div
@@ -193,9 +198,18 @@ function MovCard({
           </div>
           <p className="text-xs text-text-disabled">
             {fmtDate(mov.data)}
-            {" Â· "}
-            {totalQty}x{" Â· "}
-            {fmtMoney(isEntrada ? totalCompra : totalVenda)}
+            {" · "}
+            {isEntrada ? (
+              <>
+                {totalQty} itens · {fmtMoney(totalCompra)}
+              </>
+            ) : (
+              <>
+                {summary}
+                {" · "}
+                {totalQty} itens · {fmtMoney(totalVenda)}
+              </>
+            )}
           </p>
         </div>
         {open ? (
@@ -221,12 +235,12 @@ function MovCard({
                     className="flex items-center justify-between text-xs bg-surface-alt rounded-lg px-2.5 py-1.5"
                   >
                     <span className="text-text-primary font-medium">
-                      {prod?.nome || "â€”"}
+                      {prod?.nome || "—"}
                     </span>
                     <span className="text-text-secondary">
                       {item.quantidade}x {fmtMoney(item.valor_compra_unitario)}
                       {!isEntrada && item.valor_venda_unitario != null && (
-                        <> â†’ {fmtMoney(item.valor_venda_unitario)}</>
+                        <> → {fmtMoney(item.valor_venda_unitario)}</>
                       )}
                     </span>
                   </div>
@@ -247,9 +261,15 @@ function MovCard({
                 <span className="text-text-primary font-medium">
                   {fmtMoney(totalVenda)}
                 </span>
-                <span className="text-text-disabled">PDV</span>
-                <span className="text-text-primary font-medium">
-                  {pdv?.nome || "â€”"}
+                <span className="text-text-disabled">Situação</span>
+                <span
+                  className={`font-medium ${sp === "pago" ? "text-success" : sp === "parcial" ? "text-warning" : "text-error/70"}`}
+                >
+                  {sp === "pago"
+                    ? "Pago"
+                    : sp === "parcial"
+                      ? "Parcial"
+                      : "Pendente"}
                 </span>
               </>
             )}
@@ -301,9 +321,9 @@ function MovCard({
   );
 }
 
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-// PÃ¡gina principal
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ══════════════════════════════════════════════════════════
+// Página principal
+// ══════════════════════════════════════════════════════════
 
 export default function Revenda() {
   const { user } = useAuth();
@@ -385,6 +405,7 @@ export default function Revenda() {
   const [formSaida, setFormSaida] = useState({
     data: today,
     pdv_id: "",
+    valor_acerto: "",
     observacao: "",
     itens: [
       {
@@ -396,7 +417,7 @@ export default function Revenda() {
     ],
   });
 
-  // â”€â”€ Fetch â”€â”€
+  // ── Fetch ──
 
   const fetchNaturezas = useCallback(async () => {
     const { data } = await supabase
@@ -536,51 +557,6 @@ export default function Revenda() {
         _table: "revenda_mov_saidas",
       })),
     ].sort((a, b) => (b.data || "").localeCompare(a.data || ""));
-
-    // Fetch transaction totals to compute payment status
-    const entradaIds = (entradas || []).map((e) => e.id);
-    const saidaIds = (saidas || []).map((s) => s.id);
-    const [{ data: entTrans }, { data: saiTrans }] = await Promise.all([
-      entradaIds.length > 0
-        ? supabase
-            .from("revenda_entrada_transacoes")
-            .select("mov_id, valor")
-            .in("mov_id", entradaIds)
-        : Promise.resolve({ data: [] }),
-      saidaIds.length > 0
-        ? supabase
-            .from("revenda_saida_transacoes")
-            .select("mov_id, valor")
-            .in("mov_id", saidaIds)
-        : Promise.resolve({ data: [] }),
-    ]);
-    // Group transaction totals by mov_id
-    const transMap = {};
-    for (const t of entTrans || [])
-      transMap[t.mov_id] = (transMap[t.mov_id] || 0) + Number(t.valor);
-    for (const t of saiTrans || [])
-      transMap[t.mov_id] = (transMap[t.mov_id] || 0) + Number(t.valor);
-    // Compute status_pagamento dynamically
-    for (const mov of all) {
-      const isEnt = mov._tipo === "entrada";
-      const totalMov = (mov.itens || []).reduce(
-        (s, i) =>
-          s +
-          (i.quantidade || 0) *
-            (isEnt
-              ? i.valor_compra_unitario || 0
-              : i.valor_venda_unitario || 0),
-        0,
-      );
-      const totalPago = transMap[mov.id] || 0;
-      mov.status_pagamento =
-        totalPago >= totalMov && totalMov > 0
-          ? "pago"
-          : totalPago > 0
-            ? "parcial"
-            : "pendente";
-    }
-
     setMovimentacoes(all);
   }, [tab]);
 
@@ -628,7 +604,7 @@ export default function Revenda() {
     return () => setTabs(null);
   }, [tab, setTabs]);
 
-  // â”€â”€ Save handlers â”€â”€
+  // ── Save handlers ──
 
   const handleSaveNatureza = async (e) => {
     e.preventDefault();
@@ -636,7 +612,7 @@ export default function Revenda() {
     if (editingProdutoId) {
       const { ok } = await dbOp(
         supabase
-          .from("revenda_produtos")
+          .from("revenda_naturezas")
           .update({
             nome: formNatureza.nome,
             natureza: formNatureza.natureza || null,
@@ -958,28 +934,28 @@ export default function Revenda() {
           supabase.from("revenda_mov_entradas_itens").insert(itensPayload),
           "salvar itens entrada",
         );
-        // Update custo_unitario on revenda_produtos (non-Gelo products)
-        for (const item of itensPayload) {
-          if (item.valor_compra_unitario != null && item.produto_id) {
-            const prod = naturezas.find((n) => n.id === item.produto_id);
-            if (prod && prod.natureza !== "Gelo") {
-              await dbOp(
-                supabase
-                  .from("revenda_produtos")
-                  .update({ custo_unitario: item.valor_compra_unitario })
-                  .eq("id", item.produto_id),
-                "atualizar custo produto",
-              );
-            }
-          }
+      }
+    }
+    // Update custo_unitario on revenda_produtos (non-Gelo products)
+    for (const item of formEntrada.itens) {
+      if (item.valor_compra_unitario != null && item.produto_id) {
+        const prod = naturezas.find((n) => n.id === item.produto_id);
+        if (prod && prod.natureza !== "Gelo") {
+          await dbOp(
+            supabase
+              .from("revenda_produtos")
+              .update({ custo_unitario: item.valor_compra_unitario })
+              .eq("id", item.produto_id),
+            "atualizar custo produto",
+          );
         }
-        await fetchNaturezas();
       }
     }
     setSaving(false);
     setModal(null);
     setEditingMovId(null);
     setEditingMovTipo(null);
+    await fetchNaturezas();
     await fetchMovimentacoes();
   };
 
@@ -990,7 +966,7 @@ export default function Revenda() {
       0,
     );
 
-    // Se quantidade negativa e ainda nÃ£o decidiu: perguntar
+    // Se quantidade negativa e ainda não decidiu: perguntar
     if (totalQty < 0 && forcePerda === undefined) {
       setPerdaPrompt(true);
       return;
@@ -998,22 +974,33 @@ export default function Revenda() {
 
     setSaving(true);
     const isPerda = forcePerda === true;
+    const totalVenda = formSaida.itens.reduce(
+      (s, i) =>
+        s +
+        Math.abs(Number(i.quantidade || 0)) *
+          Number(i.valor_venda_unitario || 0),
+      0,
+    );
+    const acerto =
+      formSaida.valor_acerto !== ""
+        ? Number(formSaida.valor_acerto)
+        : totalVenda || null;
 
     if (totalQty < 0 && !isPerda && !editingMovId) {
-      // DevoluÃ§Ã£o â†’ criar ENTRADA com quantidade positiva
+      // Devolução → criar ENTRADA com quantidade positiva
       const { ok, data: inserted } = await dbOp(
         supabase
           .from("revenda_mov_entradas")
           .insert({
             data: formSaida.data,
             observacao: formSaida.observacao
-              ? `DevoluÃ§Ã£o: ${formSaida.observacao}`
-              : "DevoluÃ§Ã£o de PDV",
+              ? `Devolução: ${formSaida.observacao}`
+              : "Devolução de PDV",
             user_id: user.id,
           })
           .select("id")
           .single(),
-        "salvar devoluÃ§Ã£o",
+        "salvar devolução",
       );
       if (ok && inserted?.id) {
         const itensPayload = formSaida.itens
@@ -1037,6 +1024,7 @@ export default function Revenda() {
       const payload = {
         data: formSaida.data,
         pdv_id: formSaida.pdv_id || null,
+        valor_acerto: isPerda ? null : acerto,
         observacao: isPerda
           ? formSaida.observacao
             ? `Perda: ${formSaida.observacao}`
@@ -1110,7 +1098,7 @@ export default function Revenda() {
     await fetchMovimentacoes();
   };
 
-  // â”€â”€ Formas de Pagamento handlers â”€â”€
+  // ── Formas de Pagamento handlers ──
 
   const handleSaveFormaPgto = async (e) => {
     e.preventDefault();
@@ -1158,7 +1146,7 @@ export default function Revenda() {
     setModal("forma_pgto");
   };
 
-  // â”€â”€ Pagamento (transaÃ§Ãµes) handlers â”€â”€
+  // ── Pagamento (transações) handlers ──
 
   const openPagamento = async (mov) => {
     setPagamentoMov(mov);
@@ -1217,7 +1205,7 @@ export default function Revenda() {
       setSaving(false);
       return;
     }
-    // Refresh transaÃ§Ãµes
+    // Refresh transações
     const { data } = await supabase
       .from(table)
       .select("*")
@@ -1237,38 +1225,27 @@ export default function Revenda() {
     );
     const totalPago2 = (data || []).reduce((s, t) => s + Number(t.valor), 0);
     const restante2 = Math.max(0, totalMov2 - totalPago2);
+    // Atualiza status_pagamento na saída
+    if (pagamentoMov._tipo === "saida") {
+      const newStatus =
+        totalPago2 <= 0
+          ? "pendente"
+          : totalPago2 >= totalMov2
+            ? "pago"
+            : "parcial";
+      await supabase
+        .from("revenda_mov_saidas")
+        .update({ status_pagamento: newStatus })
+        .eq("id", pagamentoMov.id);
+    }
     setFormTransacao({
       forma_pagamento_id: dinheiro?.id ?? formasPagamento[0]?.id ?? "",
       valor: restante2 > 0 ? restante2.toFixed(2) : "",
       data: pagamentoMov?.data || today,
       observacao: "",
     });
-    await updatePaymentStatus(pagamentoMov, data || []);
     setSaving(false);
-  };
-
-  // Update status_pagamento based on transactions total
-  const updatePaymentStatus = async (mov, transacoes) => {
-    const isEnt = mov._tipo === "entrada";
-    const totalMov = (mov.itens || []).reduce(
-      (s, i) =>
-        s +
-        (i.quantidade || 0) *
-          (isEnt ? i.valor_compra_unitario || 0 : i.valor_venda_unitario || 0),
-      0,
-    );
-    const totalPago = transacoes.reduce((s, t) => s + Number(t.valor), 0);
-    const status =
-      totalPago >= totalMov && totalMov > 0
-        ? "pago"
-        : totalPago > 0
-          ? "parcial"
-          : "pendente";
-    setMovimentacoes((prev) =>
-      prev.map((m) =>
-        m.id === mov.id ? { ...m, status_pagamento: status } : m,
-      ),
-    );
+    await fetchMovimentacoes();
   };
 
   const deleteTransacao = async (id) => {
@@ -1287,10 +1264,28 @@ export default function Revenda() {
       .eq("mov_id", pagamentoMov.id)
       .order("data", { ascending: false });
     setTransacoes(data || []);
-    await updatePaymentStatus(pagamentoMov, data || []);
+    // Recalcula status_pagamento na saída
+    if (pagamentoMov._tipo === "saida") {
+      const totalMov = (pagamentoMov.itens || []).reduce(
+        (s, i) => s + (i.quantidade || 0) * (i.valor_venda_unitario || 0),
+        0,
+      );
+      const totalPago = (data || []).reduce((s, t) => s + Number(t.valor), 0);
+      const newStatus =
+        totalPago <= 0
+          ? "pendente"
+          : totalPago >= totalMov
+            ? "pago"
+            : "parcial";
+      await supabase
+        .from("revenda_mov_saidas")
+        .update({ status_pagamento: newStatus })
+        .eq("id", pagamentoMov.id);
+      await fetchMovimentacoes();
+    }
   };
 
-  // â”€â”€ Soft-delete â”€â”€
+  // ── Soft-delete ──
 
   const handleSoftDelete = async () => {
     await dbOp(
@@ -1312,7 +1307,7 @@ export default function Revenda() {
     setModal("delete");
   };
 
-  // â”€â”€ Open modals â”€â”€
+  // ── Open modals ──
 
   const openAddNatureza = () => {
     setEditingProdutoId(null);
@@ -1426,6 +1421,7 @@ export default function Revenda() {
     setFormSaida({
       data: today,
       pdv_id: pdvs[0]?.id ?? "",
+      valor_acerto: "",
       observacao: "",
       itens: [
         {
@@ -1463,6 +1459,7 @@ export default function Revenda() {
       setFormSaida({
         data: m.data || today,
         pdv_id: m.pdv_id || "",
+        valor_acerto: m.valor_acerto?.toString() || "",
         observacao: m.observacao || "",
         itens:
           (m.itens || []).length > 0
@@ -1486,7 +1483,7 @@ export default function Revenda() {
     }
   };
 
-  // â”€â”€ Render â”€â”€
+  // ── Render ──
 
   return (
     <div className="space-y-4">
@@ -1510,7 +1507,7 @@ export default function Revenda() {
               onClick={openAddSaida}
               className="flex items-center gap-1.5 bg-primary-500 hover:bg-primary-600 text-white text-sm font-medium rounded-lg px-3 py-2 transition-colors"
             >
-              <Plus size={16} /> SaÃ­da
+              <Plus size={16} /> Saída
             </button>
           )}
           {tab === "cadastro" && cadastroSub && (
@@ -1556,11 +1553,13 @@ export default function Revenda() {
         ))}
       </div>
 
-      {/* ConteÃºdo */}
+      {/* Conteúdo */}
       {loading ? (
         <div className="flex justify-center py-12">
           <div className="animate-spin h-8 w-8 border-3 border-primary-500 border-t-transparent rounded-full" />
         </div>
+      ) : tab === "reposicao" ? (
+        <Reposicao embedded />
       ) : tab === "cadastro" ? (
         !cadastroSub ? (
           /* Cadastro menu */
@@ -1625,8 +1624,8 @@ export default function Revenda() {
             {naturezas.length === 0 ? (
               <div className="bg-surface rounded-2xl border border-border-custom p-8 text-center">
                 <p className="text-text-secondary">
-                  Cadastre seus produtos (ex: PicolÃ© - Fruta no Palito, Gelo,
-                  CachaÃ§a).
+                  Cadastre seus produtos (ex: Picolé - Fruta no Palito, Gelo,
+                  Cachaça).
                 </p>
               </div>
             ) : (
@@ -1647,7 +1646,7 @@ export default function Revenda() {
             {fornecedores.length === 0 ? (
               <div className="bg-surface rounded-2xl border border-border-custom p-8 text-center">
                 <p className="text-text-secondary">
-                  Cadastre seus fornecedores (distribuidoras, fÃ¡bricas, etc).
+                  Cadastre seus fornecedores (distribuidoras, fábricas, etc).
                 </p>
               </div>
             ) : (
@@ -1670,12 +1669,12 @@ export default function Revenda() {
                           <p className="text-xs text-text-disabled truncate">
                             {[f.contato_tipo, f.contato_nome, f.contato]
                               .filter(Boolean)
-                              .join(" Â· ")}
+                              .join(" · ")}
                           </p>
                         )}
                         {(f.bairro || f.cidade) && (
                           <p className="text-xs text-text-disabled truncate">
-                            {[f.bairro, f.cidade].filter(Boolean).join(" Â· ")}
+                            {[f.bairro, f.cidade].filter(Boolean).join(" · ")}
                           </p>
                         )}
                         {!f.contato_tipo &&
@@ -1790,12 +1789,12 @@ export default function Revenda() {
                           <p className="text-xs text-text-disabled truncate">
                             {[p.contato_tipo, p.contato_nome, p.contato]
                               .filter(Boolean)
-                              .join(" Â· ")}
+                              .join(" · ")}
                           </p>
                         )}
                         {(p.bairro || p.cidade) && (
                           <p className="text-xs text-text-disabled truncate">
-                            {[p.bairro, p.cidade].filter(Boolean).join(" Â· ")}
+                            {[p.bairro, p.cidade].filter(Boolean).join(" · ")}
                           </p>
                         )}
                         {!p.contato_tipo &&
@@ -1838,7 +1837,7 @@ export default function Revenda() {
       ) : movimentacoes.length === 0 ? (
         <div className="bg-surface rounded-2xl border border-border-custom p-8 text-center">
           <p className="text-text-secondary">
-            Nenhuma {tab === "entradas" ? "entrada" : "saÃ­da"} encontrada.
+            Nenhuma {tab === "entradas" ? "entrada" : "saída"} encontrada.
           </p>
         </div>
       ) : (
@@ -1858,9 +1857,9 @@ export default function Revenda() {
         </div>
       )}
 
-      {/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */}
+      {/* ══════════════════════════════════════════════════ */}
       {/* MODAIS                                            */}
-      {/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */}
+      {/* ══════════════════════════════════════════════════ */}
 
       {/* Novo Produto */}
       <Modal
@@ -1877,7 +1876,7 @@ export default function Revenda() {
               value={formNatureza.nome}
               onChange={(e) => setFormNatureza({ nome: e.target.value })}
               className="w-full rounded-lg border border-border-custom bg-bg px-3 py-2 text-sm"
-              placeholder="Ex: PicolÃ© Chocolate, Gelo 5KG, CachaÃ§a 1L"
+              placeholder="Ex: Picolé Chocolate, Gelo 5KG, Cachaça 1L"
             />
           </div>
           <div className="relative">
@@ -1920,7 +1919,7 @@ export default function Revenda() {
                 setTimeout(() => setShowProdNaturezaSugg(false), 150)
               }
               className="w-full rounded-lg border border-border-custom bg-bg px-3 py-2 text-sm"
-              placeholder="Ex: Gelo, PicolÃ©, Bebida..."
+              placeholder="Ex: Gelo, Picolé, Bebida..."
               autoComplete="off"
             />
             {showProdNaturezaSugg && prodNaturezaSuggestions.length > 0 && (
@@ -1942,7 +1941,7 @@ export default function Revenda() {
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-sm font-medium mb-1">DimensÃ£o</label>
+              <label className="block text-sm font-medium mb-1">Dimensão</label>
               <select
                 value={formNatureza.dimensao}
                 onChange={(e) =>
@@ -1950,7 +1949,7 @@ export default function Revenda() {
                 }
                 className="w-full rounded-lg border border-border-custom bg-bg px-3 py-2 text-sm"
               >
-                <option value="">â€”</option>
+                <option value="">—</option>
                 <option value="Unidade">Unidade</option>
                 <option value="KG">KG</option>
                 <option value="Metro">Metro</option>
@@ -2178,7 +2177,7 @@ export default function Revenda() {
               />
             </div>
             <div>
-              <label className="block text-sm font-medium mb-1">NÂº</label>
+              <label className="block text-sm font-medium mb-1">Nº</label>
               <input
                 type="text"
                 value={formPdv.numero}
@@ -2190,7 +2189,7 @@ export default function Revenda() {
             </div>
           </div>
           <div>
-            <label className="block text-sm font-medium mb-1">ObservaÃ§Ã£o</label>
+            <label className="block text-sm font-medium mb-1">Observação</label>
             <input
               type="text"
               value={formPdv.observacao}
@@ -2227,7 +2226,7 @@ export default function Revenda() {
                 setFormFornecedor({ ...formFornecedor, nome: e.target.value })
               }
               className="w-full rounded-lg border border-border-custom bg-bg px-3 py-2 text-sm"
-              placeholder="Ex: Distribuidora X, FÃ¡brica Y"
+              placeholder="Ex: Distribuidora X, Fábrica Y"
             />
           </div>
           <div>
@@ -2374,7 +2373,7 @@ export default function Revenda() {
               />
             </div>
             <div>
-              <label className="block text-sm font-medium mb-1">NÂº</label>
+              <label className="block text-sm font-medium mb-1">Nº</label>
               <input
                 type="text"
                 value={formFornecedor.numero}
@@ -2389,7 +2388,7 @@ export default function Revenda() {
             </div>
           </div>
           <div>
-            <label className="block text-sm font-medium mb-1">ObservaÃ§Ã£o</label>
+            <label className="block text-sm font-medium mb-1">Observação</label>
             <input
               type="text"
               value={formFornecedor.observacao}
@@ -2412,7 +2411,7 @@ export default function Revenda() {
         </form>
       </Modal>
 
-      {/* â”€â”€â”€ Nova Entrada â”€â”€â”€ */}
+      {/* ─── Nova Entrada ─── */}
       <Modal
         open={modal === "entrada"}
         onClose={() => setModal(null)}
@@ -2596,11 +2595,11 @@ export default function Revenda() {
                 setFormEntrada({ ...formEntrada, nota_fiscal: e.target.value })
               }
               className="w-full rounded-lg border border-border-custom bg-bg px-3 py-2 text-sm"
-              placeholder="NÃºmero / referÃªncia"
+              placeholder="Número / referência"
             />
           </div>
           <div>
-            <label className="block text-sm font-medium mb-1">ObservaÃ§Ã£o</label>
+            <label className="block text-sm font-medium mb-1">Observação</label>
             <input
               type="text"
               value={formEntrada.observacao}
@@ -2620,11 +2619,11 @@ export default function Revenda() {
         </form>
       </Modal>
 
-      {/* â”€â”€â”€ Nova SaÃ­da â”€â”€â”€ */}
+      {/* ─── Nova Saída ─── */}
       <Modal
         open={modal === "saida"}
         onClose={() => setModal(null)}
-        title={editingMovId ? "Editar SaÃ­da" : "Nova SaÃ­da"}
+        title={editingMovId ? "Editar Saída" : "Nova Saída"}
       >
         <form onSubmit={handleSaveSaida} className="space-y-3">
           <div className="grid grid-cols-2 gap-3">
@@ -2835,7 +2834,22 @@ export default function Revenda() {
           </div>
 
           <div>
-            <label className="block text-sm font-medium mb-1">ObservaÃ§Ã£o</label>
+            <label className="block text-sm font-medium mb-1">
+              Valor acerto
+            </label>
+            <input
+              type="number"
+              step="0.01"
+              value={formSaida.valor_acerto}
+              onChange={(e) =>
+                setFormSaida({ ...formSaida, valor_acerto: e.target.value })
+              }
+              className="w-full rounded-lg border border-border-custom bg-bg px-3 py-2 text-sm"
+              placeholder="Se vazio, calcula soma (Qtd × Venda)"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium mb-1">Observação</label>
             <input
               type="text"
               value={formSaida.observacao}
@@ -2850,7 +2864,7 @@ export default function Revenda() {
             disabled={saving}
             className="w-full bg-primary-500 hover:bg-primary-600 disabled:opacity-50 text-white font-medium rounded-lg px-4 py-2.5 transition-colors"
           >
-            {saving ? "Salvando..." : "Salvar SaÃ­da"}
+            {saving ? "Salvando..." : "Salvar Saída"}
           </button>
         </form>
       </Modal>
@@ -2862,9 +2876,9 @@ export default function Revenda() {
         title="Quantidade negativa"
       >
         <p className="text-sm text-text-secondary mb-4">
-          VocÃª informou uma quantidade negativa. Isso Ã© uma{" "}
-          <strong>perda</strong> (produto danificado, nÃ£o volta ao estoque) ou
-          uma <strong>devoluÃ§Ã£o</strong> (produto retorna ao estoque)?
+          Você informou uma quantidade negativa. Isso é uma{" "}
+          <strong>perda</strong> (produto danificado, não volta ao estoque) ou
+          uma <strong>devolução</strong> (produto retorna ao estoque)?
         </p>
         <div className="flex flex-col gap-2">
           <button
@@ -2916,7 +2930,7 @@ export default function Revenda() {
                 setFormFormaPgto({ ...formFormaPgto, nome: e.target.value })
               }
               className="w-full px-3 py-2 rounded-lg border border-border-custom bg-surface-alt text-sm focus:outline-none focus:ring-2 focus:ring-primary-400"
-              placeholder="Ex: Pix, Dinheiro, CartÃ£o..."
+              placeholder="Ex: Pix, Dinheiro, Cartão..."
             />
           </div>
           <div className="flex gap-2 pt-2">
@@ -2938,7 +2952,7 @@ export default function Revenda() {
         </form>
       </Modal>
 
-      {/* Modal Pagamento (transaÃ§Ãµes) */}
+      {/* Modal Pagamento (transações) */}
       <Modal
         open={modal === "pagamento"}
         onClose={() => {
@@ -2971,7 +2985,7 @@ export default function Revenda() {
                 <div className="bg-surface-alt rounded-xl p-3 space-y-2">
                   <div className="flex items-center justify-between">
                     <span className="text-xs font-semibold text-text-secondary">
-                      {isEntrada ? "Entrada" : "SaÃ­da"}
+                      {isEntrada ? "Entrada" : "Saída"}
                       {!isEntrada &&
                         pagamentoMov.pdv_id &&
                         (() => {
@@ -3015,7 +3029,7 @@ export default function Revenda() {
                         return (
                           <tr key={idx}>
                             <td className="py-0.5 truncate max-w-[120px]">
-                              {prod?.nome || "â€”"}
+                              {prod?.nome || "—"}
                             </td>
                             <td className="py-0.5 text-right">
                               {it.quantidade}
@@ -3046,11 +3060,11 @@ export default function Revenda() {
                   )}
                 </div>
 
-                {/* Lista de transaÃ§Ãµes */}
+                {/* Lista de transações */}
                 {transacoes.length > 0 && (
                   <div className="space-y-1">
                     <p className="text-xs font-semibold text-text-secondary">
-                      TransaÃ§Ãµes registradas
+                      Transações registradas
                     </p>
                     {transacoes.map((t) => {
                       const fp = formasPagamento.find(
@@ -3066,7 +3080,7 @@ export default function Revenda() {
                               R$ {Number(t.valor).toFixed(2)}
                             </span>
                             <span className="text-text-disabled ml-2">
-                              {fp?.nome || "â€”"}
+                              {fp?.nome || "—"}
                             </span>
                             <span className="text-text-disabled ml-2 text-xs">
                               {t.data}
@@ -3084,13 +3098,13 @@ export default function Revenda() {
                   </div>
                 )}
 
-                {/* Form nova transaÃ§Ã£o */}
+                {/* Form nova transação */}
                 <form
                   onSubmit={handleSaveTransacao}
                   className="space-y-3 border-t border-border-custom pt-3"
                 >
                   <p className="text-xs font-semibold text-text-secondary">
-                    Nova transaÃ§Ã£o
+                    Nova transação
                   </p>
                   <div className="grid grid-cols-2 gap-2">
                     <div>
@@ -3107,7 +3121,7 @@ export default function Revenda() {
                         }
                         className="w-full px-2 py-1.5 rounded-lg border border-border-custom bg-surface-alt text-sm"
                       >
-                        <option value="">â€” Nenhuma â€”</option>
+                        <option value="">— Nenhuma —</option>
                         {formasPagamento.map((f) => (
                           <option key={f.id} value={f.id}>
                             {f.nome}
@@ -3154,7 +3168,7 @@ export default function Revenda() {
                   </div>
                   <div>
                     <label className="block text-xs text-text-disabled mb-0.5">
-                      ObservaÃ§Ã£o
+                      Observação
                     </label>
                     <input
                       value={formTransacao.observacao}
@@ -3173,7 +3187,7 @@ export default function Revenda() {
                     disabled={saving}
                     className="w-full py-2 rounded-lg bg-primary-500 hover:bg-primary-600 text-white text-sm font-medium transition-colors disabled:opacity-50"
                   >
-                    {saving ? "Salvando..." : "Registrar TransaÃ§Ã£o"}
+                    {saving ? "Salvando..." : "Registrar Transação"}
                   </button>
                 </form>
               </div>
@@ -3185,7 +3199,7 @@ export default function Revenda() {
       <Modal
         open={modal === "delete"}
         onClose={() => setModal(null)}
-        title="Confirmar remoÃ§Ã£o"
+        title="Confirmar remoção"
       >
         <ConfirmDelete
           message="Tem certeza que deseja remover este registro?"

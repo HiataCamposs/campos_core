@@ -793,6 +793,8 @@ export default function Gelo() {
     if (payload.preco_pacote !== "" && payload.preco_pacote != null)
       payload.preco_pacote = Number(payload.preco_pacote);
     else payload.preco_pacote = null;
+    // preco_pacote only exists on gelo_producao
+    if (tab !== "producao") delete payload.preco_pacote;
     if (
       tab === "despesas" &&
       payload.quantidade &&
