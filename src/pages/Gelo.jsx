@@ -876,16 +876,14 @@ export default function Gelo() {
     setSaving(false);
     setEditingId(null);
     setModal(null);
-    // Update custo_unitario on revenda_produtos for gelo products
+    // Update custo_unitario on revenda_produtos for gelo products (match by name)
     if (tab === "producao" && payload.preco_pacote != null && payload.tamanho) {
       const tamanho = parseInt(payload.tamanho);
       if (tamanho) {
         const { data: prods } = await supabase
           .from("revenda_produtos")
           .select("id")
-          .eq("natureza", "Gelo")
-          .eq("dimensao", "KG")
-          .eq("tamanho", String(tamanho))
+          .ilike("nome", `%gelo%${tamanho}%kg%`)
           .is("deleted_at", null);
         if (prods && prods.length > 0) {
           for (const p of prods) {

@@ -20,3 +20,10 @@ FROM (
   GROUP BY mov_id
 ) t
 WHERE t.mov_id = s.id;
+
+-- Atualiza valor_compra_unitario nos itens de saída com o custo atual do produto
+UPDATE revenda_mov_saidas_itens i
+SET valor_compra_unitario = rp.custo_unitario
+FROM revenda_produtos rp
+WHERE rp.id = i.produto_id
+  AND rp.custo_unitario IS NOT NULL;

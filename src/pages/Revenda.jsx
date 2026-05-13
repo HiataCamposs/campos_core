@@ -199,17 +199,7 @@ function MovCard({
           <p className="text-xs text-text-disabled">
             {fmtDate(mov.data)}
             {" · "}
-            {isEntrada ? (
-              <>
-                {totalQty} itens · {fmtMoney(totalCompra)}
-              </>
-            ) : (
-              <>
-                {summary}
-                {" · "}
-                {totalQty} itens · {fmtMoney(totalVenda)}
-              </>
-            )}
+            {totalQty} itens · {fmtMoney(isEntrada ? totalCompra : totalVenda)}
           </p>
         </div>
         {open ? (
@@ -250,20 +240,22 @@ function MovCard({
           )}
           <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
             <span className="text-text-disabled">Qtd total</span>
-            <span className="text-text-primary font-medium">{totalQty}</span>
+            <span className="text-text-primary font-medium text-right">
+              {totalQty}
+            </span>
             <span className="text-text-disabled">Compra total</span>
-            <span className="text-text-primary font-medium">
+            <span className="text-text-primary font-medium text-right">
               {fmtMoney(totalCompra)}
             </span>
             {!isEntrada && (
               <>
                 <span className="text-text-disabled">Venda total</span>
-                <span className="text-text-primary font-medium">
+                <span className="text-text-primary font-medium text-right">
                   {fmtMoney(totalVenda)}
                 </span>
                 <span className="text-text-disabled">Situação</span>
                 <span
-                  className={`font-medium ${sp === "pago" ? "text-success" : sp === "parcial" ? "text-warning" : "text-error/70"}`}
+                  className={`font-medium text-right ${sp === "pago" ? "text-success" : sp === "parcial" ? "text-warning" : "text-error/70"}`}
                 >
                   {sp === "pago"
                     ? "Pago"
@@ -276,7 +268,7 @@ function MovCard({
             {isEntrada && forn && (
               <>
                 <span className="text-text-disabled">Fornecedor</span>
-                <span className="text-text-primary font-medium">
+                <span className="text-text-primary font-medium text-right">
                   {forn.nome}
                 </span>
               </>
@@ -284,7 +276,7 @@ function MovCard({
             {isEntrada && mov.nota_fiscal && (
               <>
                 <span className="text-text-disabled">Nota fiscal</span>
-                <span className="text-text-primary font-medium">
+                <span className="text-text-primary font-medium text-right">
                   {mov.nota_fiscal}
                 </span>
               </>
@@ -405,7 +397,6 @@ export default function Revenda() {
   const [formSaida, setFormSaida] = useState({
     data: today,
     pdv_id: "",
-    valor_acerto: "",
     observacao: "",
     itens: [
       {
@@ -612,7 +603,7 @@ export default function Revenda() {
     if (editingProdutoId) {
       const { ok } = await dbOp(
         supabase
-          .from("revenda_naturezas")
+          .from("revenda_produtos")
           .update({
             nome: formNatureza.nome,
             natureza: formNatureza.natureza || null,
@@ -974,18 +965,6 @@ export default function Revenda() {
 
     setSaving(true);
     const isPerda = forcePerda === true;
-    const totalVenda = formSaida.itens.reduce(
-      (s, i) =>
-        s +
-        Math.abs(Number(i.quantidade || 0)) *
-          Number(i.valor_venda_unitario || 0),
-      0,
-    );
-    const acerto =
-      formSaida.valor_acerto !== ""
-        ? Number(formSaida.valor_acerto)
-        : totalVenda || null;
-
     if (totalQty < 0 && !isPerda && !editingMovId) {
       // Devolução → criar ENTRADA com quantidade positiva
       const { ok, data: inserted } = await dbOp(
@@ -1024,7 +1003,6 @@ export default function Revenda() {
       const payload = {
         data: formSaida.data,
         pdv_id: formSaida.pdv_id || null,
-        valor_acerto: isPerda ? null : acerto,
         observacao: isPerda
           ? formSaida.observacao
             ? `Perda: ${formSaida.observacao}`
@@ -1421,13 +1399,15 @@ export default function Revenda() {
     setFormSaida({
       data: today,
       pdv_id: pdvs[0]?.id ?? "",
-      valor_acerto: "",
       observacao: "",
       itens: [
         {
           produto_id: naturezas[0]?.id ?? "",
           quantidade: "",
-          valor_compra_unitario: "",
+          valor_compra_unitario:
+            naturezas[0]?.custo_unitario != null
+              ? String(naturezas[0].custo_unitario)
+              : "",
           valor_venda_unitario: "",
         },
       ],
@@ -1459,7 +1439,6 @@ export default function Revenda() {
       setFormSaida({
         data: m.data || today,
         pdv_id: m.pdv_id || "",
-        valor_acerto: m.valor_acerto?.toString() || "",
         observacao: m.observacao || "",
         itens:
           (m.itens || []).length > 0
@@ -2673,7 +2652,10 @@ export default function Revenda() {
                       {
                         produto_id: naturezas[0]?.id ?? "",
                         quantidade: "",
-                        valor_compra_unitario: "",
+                        valor_compra_unitario:
+                          naturezas[0]?.custo_unitario != null
+                            ? String(naturezas[0].custo_unitario)
+                            : "",
                         valor_venda_unitario: "",
                       },
                     ],
@@ -2686,18 +2668,18 @@ export default function Revenda() {
             </div>
             <div className="border border-border-custom rounded-lg overflow-hidden">
               {/* Header */}
-              <div className="grid grid-cols-[2fr_44px_62px_62px_28px] bg-surface-alt px-2 py-1.5 text-[10px] font-semibold text-text-disabled uppercase tracking-wider">
+              <div className="grid grid-cols-[2fr_59px_59px_59px_14px] bg-surface-alt px-2 py-1.5 text-[10px] font-semibold text-text-disabled uppercase tracking-wider">
                 <span>Produto</span>
-                <span className="text-center">Qtd</span>
-                <span className="text-center">Compra</span>
-                <span className="text-center">Venda</span>
+                <span className="text-center -ml-5">Qtd</span>
+                <span className="text-center -ml-2">Compra</span>
+                <span className="text-center -ml-1">Venda</span>
                 <span></span>
               </div>
               {/* Rows */}
               {formSaida.itens.map((item, idx) => (
                 <div
                   key={idx}
-                  className="grid grid-cols-[2fr_44px_62px_62px_28px] items-center px-2 py-1.5 border-t border-border-custom gap-1"
+                  className="grid grid-cols-[2fr_59px_59px_59px_14px] items-center px-2 py-1.5 border-t border-border-custom gap-1"
                 >
                   <select
                     required
@@ -2716,8 +2698,7 @@ export default function Revenda() {
                       itens[idx] = {
                         ...itens[idx],
                         produto_id: selectedId,
-                        valor_compra_unitario:
-                          itens[idx].valor_compra_unitario || custoDefault,
+                        valor_compra_unitario: custoDefault,
                       };
                       setFormSaida({ ...formSaida, itens });
                     }}
@@ -2786,9 +2767,9 @@ export default function Revenda() {
                           itens: formSaida.itens.filter((_, i) => i !== idx),
                         })
                       }
-                      className="p-1 rounded hover:bg-error/10 text-text-disabled hover:text-error transition-colors flex items-center justify-center"
+                      className="p-0.5 rounded hover:bg-error/10 text-text-disabled hover:text-error transition-colors flex items-center justify-center"
                     >
-                      <X size={12} />
+                      <X size={10} />
                     </button>
                   ) : (
                     <span />
@@ -2796,7 +2777,7 @@ export default function Revenda() {
                 </div>
               ))}
               {/* Totais */}
-              <div className="grid grid-cols-[2fr_44px_62px_62px_28px] items-center px-2 py-1.5 border-t border-border-custom bg-surface-alt text-xs font-semibold">
+              <div className="grid grid-cols-[2fr_59px_59px_59px_14px] items-center px-2 py-1.5 border-t border-border-custom bg-surface-alt text-xs font-semibold">
                 <span className="text-text-secondary">Total</span>
                 <span className="text-center text-text-primary">
                   {formSaida.itens.reduce(
@@ -2833,21 +2814,6 @@ export default function Revenda() {
             </div>
           </div>
 
-          <div>
-            <label className="block text-sm font-medium mb-1">
-              Valor acerto
-            </label>
-            <input
-              type="number"
-              step="0.01"
-              value={formSaida.valor_acerto}
-              onChange={(e) =>
-                setFormSaida({ ...formSaida, valor_acerto: e.target.value })
-              }
-              className="w-full rounded-lg border border-border-custom bg-bg px-3 py-2 text-sm"
-              placeholder="Se vazio, calcula soma (Qtd × Venda)"
-            />
-          </div>
           <div>
             <label className="block text-sm font-medium mb-1">Observação</label>
             <input
