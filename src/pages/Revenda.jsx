@@ -28,7 +28,9 @@ import {
 } from "lucide-react";
 import Reposicao from "./Reposicao";
 
-const today = new Date().toISOString().slice(0, 10);
+const today = new Date().toLocaleDateString("sv-SE", {
+  timeZone: "America/Sao_Paulo",
+});
 
 // ── Helper: supabase mutation with error handling ──
 const dbOp = async (query, label = "Operação") => {
@@ -104,8 +106,9 @@ function MovCard({
   onEdit,
   onDelete,
   onPagamento,
+  initialOpen,
 }) {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(initialOpen || false);
   const isEntrada = mov._tipo === "entrada";
   const pdv = pdvs.find((p) => p.id === mov.pdv_id);
   const forn = fornecedores.find((f) => f.id === mov.fornecedor_id);
@@ -156,6 +159,7 @@ function MovCard({
 
   return (
     <div
+      id={`mov-${mov.id}`}
       className={`bg-surface rounded-xl border overflow-hidden transition-colors ${borderClass}`}
     >
       <button
@@ -319,6 +323,8 @@ export default function Revenda() {
   const [editingFornecedorId, setEditingFornecedorId] = useState(null);
   const [editingProdutoId, setEditingProdutoId] = useState(null);
   const [editingPdvId, setEditingPdvId] = useState(null);
+  const [expandedPdvId, setExpandedPdvId] = useState(null);
+  const [autoOpenMovId, setAutoOpenMovId] = useState(null);
   const [editingMovId, setEditingMovId] = useState(null);
   const [perdaPrompt, setPerdaPrompt] = useState(false);
 
@@ -350,9 +356,7 @@ export default function Revenda() {
   const [showProdNaturezaSugg, setShowProdNaturezaSugg] = useState(false);
   const [formFornecedor, setFormFornecedor] = useState({
     nome: "",
-    contato_tipo: "",
-    contato_nome: "",
-    contato: "",
+    contatos: [{ tipo: "", nome: "", telefone: "" }],
     cidade: "",
     bairro: "",
     logradouro: "",
@@ -362,9 +366,7 @@ export default function Revenda() {
   const [formPdv, setFormPdv] = useState({
     nome: "",
     natureza: "",
-    contato_tipo: "",
-    contato_nome: "",
-    contato: "",
+    contatos: [{ tipo: "", nome: "", telefone: "" }],
     cidade: "",
     bairro: "",
     logradouro: "",
@@ -373,8 +375,7 @@ export default function Revenda() {
   });
   const [naturezaSuggestions, setNaturezaSuggestions] = useState([]);
   const [showNaturezaSugg, setShowNaturezaSugg] = useState(false);
-  const [tipoSuggestions, setTipoSuggestions] = useState([]);
-  const [showTipoSugg, setShowTipoSugg] = useState(false);
+
   const [formEntrada, setFormEntrada] = useState({
     data: today,
     fornecedor_id: "",
@@ -438,14 +439,16 @@ export default function Revenda() {
         .is("deleted_at", null),
     ]);
     const enriched = (data || []).map((f) => {
-      const c = (contatos || []).find((c) => c.entidade_id === f.id) || {};
+      const cs = (contatos || []).filter((c) => c.entidade_id === f.id);
       const e = (enderecos || []).find((e) => e.entidade_id === f.id) || {};
       return {
         ...f,
-        contato_tipo: c.tipo || "",
-        contato_nome: c.nome || "",
-        contato: c.telefone || "",
-        _contato_id: c.id,
+        contatos: cs.map((c) => ({
+          _id: c.id,
+          tipo: c.tipo || "",
+          nome: c.nome || "",
+          telefone: c.telefone || "",
+        })),
         cidade: e.cidade || "",
         bairro: e.bairro || "",
         logradouro: e.logradouro || "",
@@ -478,14 +481,16 @@ export default function Revenda() {
         .is("deleted_at", null),
     ]);
     const enriched = (data || []).map((p) => {
-      const c = (contatos || []).find((c) => c.entidade_id === p.id) || {};
+      const cs = (contatos || []).filter((c) => c.entidade_id === p.id);
       const e = (enderecos || []).find((e) => e.entidade_id === p.id) || {};
       return {
         ...p,
-        contato_tipo: c.tipo || "",
-        contato_nome: c.nome || "",
-        contato: c.telefone || "",
-        _contato_id: c.id,
+        contatos: cs.map((c) => ({
+          _id: c.id,
+          tipo: c.tipo || "",
+          nome: c.nome || "",
+          telefone: c.telefone || "",
+        })),
         cidade: e.cidade || "",
         bairro: e.bairro || "",
         logradouro: e.logradouro || "",
@@ -535,7 +540,18 @@ export default function Revenda() {
         _tipo: "saida",
         _table: "revenda_mov_saidas",
       })),
-    ].sort((a, b) => (b.data || "").localeCompare(a.data || ""));
+    ].sort((a, b) => {
+      if (a._tipo === "saida" && b._tipo === "saida") {
+        const statusOrder = { pendente: 0, parcial: 1, pago: 2 };
+        const sa = statusOrder[a.status_pagamento] ?? 1;
+        const sb = statusOrder[b.status_pagamento] ?? 1;
+        if (sa !== sb) return sa - sb;
+      }
+      return (
+        (b.data || "").localeCompare(a.data || "") ||
+        (b.created_at || "").localeCompare(a.created_at || "")
+      );
+    });
     setMovimentacoes(all);
   }, [tab]);
 
@@ -665,32 +681,51 @@ export default function Revenda() {
       entidadeId = inserted?.id;
     }
     if (entidadeId) {
-      // Upsert contato
-      const contatoPayload = {
-        entidade_tipo: "fornecedor",
-        entidade_id: entidadeId,
-        tipo: formFornecedor.contato_tipo || null,
-        nome: formFornecedor.contato_nome || null,
-        telefone: formFornecedor.contato || null,
-        user_id: user.id,
-      };
-      if (formFornecedor._contato_id) {
-        await dbOp(
-          supabase
-            .from("cadastro_contatos")
-            .update(contatoPayload)
-            .eq("id", formFornecedor._contato_id),
-          "salvar contato",
-        );
-      } else if (
-        formFornecedor.contato_tipo ||
-        formFornecedor.contato_nome ||
-        formFornecedor.contato
-      ) {
-        await dbOp(
-          supabase.from("cadastro_contatos").insert(contatoPayload),
-          "salvar contato",
-        );
+      // Save contatos (multi)
+      const existingIds = (formFornecedor.contatos || [])
+        .map((c) => c._id)
+        .filter(Boolean);
+      // Delete removed contacts
+      if (editingFornecedorId) {
+        const { data: oldContatos } = await supabase
+          .from("cadastro_contatos")
+          .select("id")
+          .eq("entidade_tipo", "fornecedor")
+          .eq("entidade_id", entidadeId)
+          .is("deleted_at", null);
+        for (const old of oldContatos || []) {
+          if (!existingIds.includes(old.id)) {
+            await dbOp(
+              supabase
+                .from("cadastro_contatos")
+                .update({ deleted_at: new Date().toISOString() })
+                .eq("id", old.id),
+              "remover contato",
+            );
+          }
+        }
+      }
+      for (const c of formFornecedor.contatos || []) {
+        if (!c.tipo && !c.nome && !c.telefone) continue;
+        const payload = {
+          entidade_tipo: "fornecedor",
+          entidade_id: entidadeId,
+          tipo: c.tipo || null,
+          nome: c.nome || null,
+          telefone: c.telefone || null,
+          user_id: user.id,
+        };
+        if (c._id) {
+          await dbOp(
+            supabase.from("cadastro_contatos").update(payload).eq("id", c._id),
+            "salvar contato",
+          );
+        } else {
+          await dbOp(
+            supabase.from("cadastro_contatos").insert(payload),
+            "salvar contato",
+          );
+        }
       }
       // Upsert endereco
       const enderecoPayload = {
@@ -727,9 +762,7 @@ export default function Revenda() {
     setEditingFornecedorId(null);
     setFormFornecedor({
       nome: "",
-      contato_tipo: "",
-      contato_nome: "",
-      contato: "",
+      contatos: [{ tipo: "", nome: "", telefone: "" }],
       cidade: "",
       bairro: "",
       logradouro: "",
@@ -780,32 +813,50 @@ export default function Revenda() {
       entidadeId = inserted?.id;
     }
     if (entidadeId) {
-      // Upsert contato
-      const contatoPayload = {
-        entidade_tipo: "pdv",
-        entidade_id: entidadeId,
-        tipo: formPdv.contato_tipo || null,
-        nome: formPdv.contato_nome || null,
-        telefone: formPdv.contato || null,
-        user_id: user.id,
-      };
-      if (formPdv._contato_id) {
-        await dbOp(
-          supabase
-            .from("cadastro_contatos")
-            .update(contatoPayload)
-            .eq("id", formPdv._contato_id),
-          "salvar contato",
-        );
-      } else if (
-        formPdv.contato_tipo ||
-        formPdv.contato_nome ||
-        formPdv.contato
-      ) {
-        await dbOp(
-          supabase.from("cadastro_contatos").insert(contatoPayload),
-          "salvar contato",
-        );
+      // Save contatos (multi)
+      const existingIds = (formPdv.contatos || [])
+        .map((c) => c._id)
+        .filter(Boolean);
+      if (editingPdvId) {
+        const { data: oldContatos } = await supabase
+          .from("cadastro_contatos")
+          .select("id")
+          .eq("entidade_tipo", "pdv")
+          .eq("entidade_id", entidadeId)
+          .is("deleted_at", null);
+        for (const old of oldContatos || []) {
+          if (!existingIds.includes(old.id)) {
+            await dbOp(
+              supabase
+                .from("cadastro_contatos")
+                .update({ deleted_at: new Date().toISOString() })
+                .eq("id", old.id),
+              "remover contato",
+            );
+          }
+        }
+      }
+      for (const c of formPdv.contatos || []) {
+        if (!c.tipo && !c.nome && !c.telefone) continue;
+        const payload = {
+          entidade_tipo: "pdv",
+          entidade_id: entidadeId,
+          tipo: c.tipo || null,
+          nome: c.nome || null,
+          telefone: c.telefone || null,
+          user_id: user.id,
+        };
+        if (c._id) {
+          await dbOp(
+            supabase.from("cadastro_contatos").update(payload).eq("id", c._id),
+            "salvar contato",
+          );
+        } else {
+          await dbOp(
+            supabase.from("cadastro_contatos").insert(payload),
+            "salvar contato",
+          );
+        }
       }
       // Upsert endereco
       const enderecoPayload = {
@@ -843,9 +894,7 @@ export default function Revenda() {
     setFormPdv({
       nome: "",
       natureza: "",
-      contato_tipo: "",
-      contato_nome: "",
-      contato: "",
+      contatos: [{ tipo: "", nome: "", telefone: "" }],
       cidade: "",
       bairro: "",
       logradouro: "",
@@ -1302,9 +1351,7 @@ export default function Revenda() {
     setEditingFornecedorId(null);
     setFormFornecedor({
       nome: "",
-      contato_tipo: "",
-      contato_nome: "",
-      contato: "",
+      contatos: [{ tipo: "", nome: "", telefone: "" }],
       cidade: "",
       bairro: "",
       logradouro: "",
@@ -1318,15 +1365,15 @@ export default function Revenda() {
     setEditingFornecedorId(f.id);
     setFormFornecedor({
       nome: f.nome,
-      contato_tipo: f.contato_tipo || "",
-      contato_nome: f.contato_nome || "",
-      contato: f.contato || "",
+      contatos:
+        f.contatos && f.contatos.length > 0
+          ? f.contatos
+          : [{ tipo: "", nome: "", telefone: "" }],
       cidade: f.cidade || "",
       bairro: f.bairro || "",
       logradouro: f.logradouro || "",
       numero: f.numero || "",
       observacao: f.observacao || "",
-      _contato_id: f._contato_id,
       _endereco_id: f._endereco_id,
     });
     setModal("fornecedor");
@@ -1337,9 +1384,7 @@ export default function Revenda() {
     setFormPdv({
       nome: "",
       natureza: "",
-      contato_tipo: "",
-      contato_nome: "",
-      contato: "",
+      contatos: [{ tipo: "", nome: "", telefone: "" }],
       cidade: "",
       bairro: "",
       logradouro: "",
@@ -1354,15 +1399,15 @@ export default function Revenda() {
     setFormPdv({
       nome: p.nome,
       natureza: p.natureza || "",
-      contato_tipo: p.contato_tipo || "",
-      contato_nome: p.contato_nome || "",
-      contato: p.contato || "",
+      contatos:
+        p.contatos && p.contatos.length > 0
+          ? p.contatos
+          : [{ tipo: "", nome: "", telefone: "" }],
       cidade: p.cidade || "",
       bairro: p.bairro || "",
       logradouro: p.logradouro || "",
       numero: p.numero || "",
       observacao: p.observacao || "",
-      _contato_id: p._contato_id,
       _endereco_id: p._endereco_id,
     });
     setModal("pdv");
@@ -1635,21 +1680,57 @@ export default function Revenda() {
                         <p className="font-semibold text-sm truncate">
                           {f.nome}
                         </p>
-                        {(f.contato_tipo || f.contato_nome || f.contato) && (
-                          <p className="text-xs text-text-disabled truncate">
-                            {[f.contato_tipo, f.contato_nome, f.contato]
-                              .filter(Boolean)
-                              .join(" · ")}
-                          </p>
-                        )}
+                        {f.contatos &&
+                          f.contatos.length > 0 &&
+                          f.contatos.some(
+                            (c) => c.tipo || c.nome || c.telefone,
+                          ) &&
+                          f.contatos
+                            .filter((c) => c.tipo || c.nome || c.telefone)
+                            .map((c, ci) => (
+                              <div
+                                key={ci}
+                                className="flex items-center justify-between text-xs bg-surface-alt rounded-lg px-2.5 py-1.5 mt-1"
+                              >
+                                <span className="text-text-primary font-medium truncate">
+                                  {[c.tipo, c.nome].filter(Boolean).join(" · ")}
+                                </span>
+                                <span className="flex items-center gap-1.5 shrink-0 ml-2">
+                                  {c.telefone && (
+                                    <>
+                                      <span className="text-text-secondary">
+                                        {c.telefone}
+                                      </span>
+                                      <a
+                                        href={`https://wa.me/55${c.telefone.replace(/\D/g, "")}`}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        onClick={(e) => e.stopPropagation()}
+                                        className="text-success hover:text-success/80 transition-colors"
+                                      >
+                                        <svg
+                                          width="14"
+                                          height="14"
+                                          viewBox="0 0 24 24"
+                                          fill="currentColor"
+                                        >
+                                          <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z" />
+                                        </svg>
+                                      </a>
+                                    </>
+                                  )}
+                                </span>
+                              </div>
+                            ))}
                         {(f.bairro || f.cidade) && (
                           <p className="text-xs text-text-disabled truncate">
                             {[f.bairro, f.cidade].filter(Boolean).join(" · ")}
                           </p>
                         )}
-                        {!f.contato_tipo &&
-                          !f.contato_nome &&
-                          !f.contato &&
+                        {(!f.contatos ||
+                          !f.contatos.some(
+                            (c) => c.tipo || c.nome || c.telefone,
+                          )) &&
                           !f.bairro &&
                           !f.cidade && (
                             <p className="text-xs text-text-disabled">
@@ -1741,65 +1822,223 @@ export default function Revenda() {
               </div>
             ) : (
               <div className="space-y-2">
-                {pdvs.map((p) => (
-                  <div
-                    key={p.id}
-                    onClick={() => openEditPdv(p)}
-                    className="bg-surface rounded-xl border border-border-custom p-4 flex items-center justify-between cursor-pointer hover:bg-surface-alt/50 transition-colors"
-                  >
-                    <div className="flex items-center gap-3 min-w-0 flex-1">
-                      <div className="h-9 w-9 shrink-0 rounded-lg bg-primary-50 flex items-center justify-center">
-                        <Store className="text-primary-500" size={16} />
-                      </div>
-                      <div className="min-w-0">
-                        <p className="font-semibold text-sm truncate">
-                          {p.nome}
-                        </p>
-                        {(p.contato_tipo || p.contato_nome || p.contato) && (
-                          <p className="text-xs text-text-disabled truncate">
-                            {[p.contato_tipo, p.contato_nome, p.contato]
-                              .filter(Boolean)
-                              .join(" · ")}
-                          </p>
-                        )}
-                        {(p.bairro || p.cidade) && (
-                          <p className="text-xs text-text-disabled truncate">
-                            {[p.bairro, p.cidade].filter(Boolean).join(" · ")}
-                          </p>
-                        )}
-                        {!p.contato_tipo &&
-                          !p.contato_nome &&
-                          !p.contato &&
-                          !p.bairro &&
-                          !p.cidade && (
-                            <p className="text-xs text-text-disabled">
-                              Sem detalhes
-                            </p>
+                {(() => {
+                  // Compute last purchase date per PDV from saidas
+                  const lastPurchaseMap = {};
+                  movimentacoes
+                    .filter((m) => m._tipo === "saida" && m.pdv_id)
+                    .forEach((m) => {
+                      if (
+                        !lastPurchaseMap[m.pdv_id] ||
+                        m.data > lastPurchaseMap[m.pdv_id]
+                      ) {
+                        lastPurchaseMap[m.pdv_id] = m.data;
+                      }
+                    });
+                  return [...pdvs]
+                    .sort((a, b) => {
+                      const da = lastPurchaseMap[a.id] || "";
+                      const db = lastPurchaseMap[b.id] || "";
+                      return (db || "9999").localeCompare(da || "9999");
+                    })
+                    .map((p) => {
+                      const lastDate = lastPurchaseMap[p.id];
+                      const isOpen = expandedPdvId === p.id;
+                      return (
+                        <div
+                          key={p.id}
+                          className="bg-surface rounded-xl border border-border-custom overflow-hidden"
+                        >
+                          <div
+                            onClick={() =>
+                              setExpandedPdvId(isOpen ? null : p.id)
+                            }
+                            className="p-4 flex items-center justify-between cursor-pointer hover:bg-surface-alt/50 transition-colors"
+                          >
+                            <div className="flex items-center gap-3 min-w-0 flex-1">
+                              <div className="h-9 w-9 shrink-0 rounded-lg bg-primary-50 flex items-center justify-center">
+                                <Store className="text-primary-500" size={16} />
+                              </div>
+                              <div className="min-w-0">
+                                <p className="font-semibold text-sm truncate">
+                                  {p.nome}
+                                </p>
+                                <p className="text-xs text-text-disabled truncate">
+                                  {[
+                                    p.natureza,
+                                    p.bairro,
+                                    lastDate
+                                      ? new Date(
+                                          lastDate + "T00:00:00",
+                                        ).toLocaleDateString("pt-BR")
+                                      : "Sem compras",
+                                  ]
+                                    .filter(Boolean)
+                                    .join(" · ")}
+                                </p>
+                              </div>
+                            </div>
+                            <ChevronDown
+                              size={16}
+                              className={`text-text-disabled transition-transform ${isOpen ? "rotate-180" : ""}`}
+                            />
+                          </div>
+                          {isOpen && (
+                            <div className="px-4 pb-3 pt-2 border-t border-border-custom space-y-1.5">
+                              {p.contatos &&
+                                p.contatos.length > 0 &&
+                                p.contatos.some(
+                                  (c) => c.tipo || c.nome || c.telefone,
+                                ) && (
+                                  <div className="space-y-1">
+                                    <p className="text-[10px] text-text-disabled font-medium uppercase">
+                                      Contatos
+                                    </p>
+                                    {p.contatos
+                                      .filter(
+                                        (c) => c.tipo || c.nome || c.telefone,
+                                      )
+                                      .map((c, ci) => (
+                                        <div
+                                          key={ci}
+                                          className="flex items-center justify-between text-xs bg-surface-alt rounded-lg px-2.5 py-1.5"
+                                        >
+                                          <span className="text-text-primary font-medium truncate">
+                                            {[c.tipo, c.nome]
+                                              .filter(Boolean)
+                                              .join(" · ")}
+                                          </span>
+                                          <span className="flex items-center gap-1.5 shrink-0 ml-2">
+                                            {c.telefone && (
+                                              <>
+                                                <span className="text-text-secondary">
+                                                  {c.telefone}
+                                                </span>
+                                                <a
+                                                  href={`https://wa.me/55${c.telefone.replace(/\D/g, "")}`}
+                                                  target="_blank"
+                                                  rel="noopener noreferrer"
+                                                  onClick={(e) =>
+                                                    e.stopPropagation()
+                                                  }
+                                                  className="text-success hover:text-success/80 transition-colors"
+                                                >
+                                                  <svg
+                                                    width="14"
+                                                    height="14"
+                                                    viewBox="0 0 24 24"
+                                                    fill="currentColor"
+                                                  >
+                                                    <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z" />
+                                                  </svg>
+                                                </a>
+                                              </>
+                                            )}
+                                          </span>
+                                        </div>
+                                      ))}
+                                  </div>
+                                )}
+                              {(p.cidade || p.logradouro) && (
+                                <div className="space-y-1">
+                                  <p className="text-[10px] text-text-disabled font-medium uppercase">
+                                    Endereço
+                                  </p>
+                                  <div className="flex items-center justify-between text-xs bg-surface-alt rounded-lg px-2.5 py-1.5">
+                                    <span className="text-text-primary font-medium truncate">
+                                      {[
+                                        p.logradouro,
+                                        p.numero,
+                                        p.bairro,
+                                        p.cidade,
+                                      ]
+                                        .filter(Boolean)
+                                        .join(", ")}
+                                    </span>
+                                    <a
+                                      href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent([p.logradouro, p.numero, p.bairro, p.cidade].filter(Boolean).join(", "))}`}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      onClick={(e) => e.stopPropagation()}
+                                      className="text-primary-500 hover:text-primary-600 transition-colors shrink-0 ml-2"
+                                    >
+                                      <MapPin size={14} />
+                                    </a>
+                                  </div>
+                                </div>
+                              )}
+                              {p.observacao && (
+                                <p className="text-xs text-text-disabled">
+                                  Obs: {p.observacao}
+                                </p>
+                              )}
+                              <div className="flex items-center gap-1 pt-1">
+                                {lastDate &&
+                                  (() => {
+                                    const lastMov = movimentacoes.find(
+                                      (m) =>
+                                        m._tipo === "saida" &&
+                                        m.pdv_id === p.id &&
+                                        m.data === lastDate,
+                                    );
+                                    if (!lastMov) return null;
+                                    return (
+                                      <button
+                                        onClick={() => {
+                                          setAutoOpenMovId(lastMov.id);
+                                          setTab("saidas");
+                                          setCadastroSub(null);
+                                          setTimeout(() => {
+                                            const el = document.getElementById(
+                                              `mov-${lastMov.id}`,
+                                            );
+                                            if (el) {
+                                              el.scrollIntoView({
+                                                behavior: "smooth",
+                                                block: "center",
+                                              });
+                                              el.classList.add(
+                                                "ring-2",
+                                                "ring-primary-500",
+                                              );
+                                              setTimeout(() => {
+                                                el.classList.remove(
+                                                  "ring-2",
+                                                  "ring-primary-500",
+                                                );
+                                                setAutoOpenMovId(null);
+                                              }, 2000);
+                                            }
+                                          }, 300);
+                                        }}
+                                        className="p-2 rounded-lg hover:bg-surface-alt text-text-disabled hover:text-accent-500 transition-colors"
+                                        title="Ir para última compra"
+                                      >
+                                        <ArrowUpCircle size={15} />
+                                      </button>
+                                    );
+                                  })()}
+                                <button
+                                  onClick={() => openEditPdv(p)}
+                                  className="p-2 rounded-lg hover:bg-surface-alt text-text-disabled hover:text-primary-500 transition-colors"
+                                >
+                                  <Pencil size={15} />
+                                </button>
+                                <button
+                                  onClick={() =>
+                                    confirmDelete(p.id, "revenda_pdvs")
+                                  }
+                                  className="p-2 rounded-lg hover:bg-surface-alt text-text-disabled hover:text-error transition-colors"
+                                >
+                                  <Trash2 size={15} />
+                                </button>
+                              </div>
+                            </div>
                           )}
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-1">
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          openEditPdv(p);
-                        }}
-                        className="p-2 rounded-lg hover:bg-surface-alt text-text-disabled hover:text-primary-500 transition-colors"
-                      >
-                        <Pencil size={15} />
-                      </button>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          confirmDelete(p.id, "revenda_pdvs");
-                        }}
-                        className="p-2 rounded-lg hover:bg-surface-alt text-text-disabled hover:text-error transition-colors"
-                      >
-                        <Trash2 size={15} />
-                      </button>
-                    </div>
-                  </div>
-                ))}
+                        </div>
+                      );
+                    });
+                })()}
               </div>
             )}
           </div>
@@ -1817,6 +2056,7 @@ export default function Revenda() {
               key={m.id}
               mov={m}
               pdvs={pdvs}
+              initialOpen={autoOpenMovId === m.id}
               produtos={naturezas}
               fornecedores={fornecedores}
               onEdit={openEditMov}
@@ -2026,85 +2266,77 @@ export default function Revenda() {
             )}
           </div>
           <div>
-            <label className="block text-sm font-medium mb-1">Contato</label>
+            <div className="flex items-center justify-between mb-1">
+              <label className="block text-sm font-medium">Contatos</label>
+              <button
+                type="button"
+                onClick={() =>
+                  setFormPdv({
+                    ...formPdv,
+                    contatos: [
+                      ...formPdv.contatos,
+                      { tipo: "", nome: "", telefone: "" },
+                    ],
+                  })
+                }
+                className="text-xs text-primary-500 hover:text-primary-600 font-medium"
+              >
+                + Adicionar
+              </button>
+            </div>
             <div className="space-y-2">
-              <div className="relative">
-                <input
-                  type="text"
-                  value={formPdv.contato_tipo}
-                  onChange={(e) => {
-                    const val = e.target.value;
-                    setFormPdv({ ...formPdv, contato_tipo: val });
-                    if (val.length > 0) {
-                      const unique = [
-                        ...new Set(
-                          pdvs.map((p) => p.contato_tipo).filter(Boolean),
-                        ),
-                      ];
-                      const filtered = unique.filter((n) =>
-                        n.toLowerCase().includes(val.toLowerCase()),
-                      );
-                      setTipoSuggestions(filtered);
-                      setShowTipoSugg(filtered.length > 0);
-                    } else {
-                      setShowTipoSugg(false);
-                    }
-                  }}
-                  onFocus={() => {
-                    const val = formPdv.contato_tipo;
-                    const unique = [
-                      ...new Set(
-                        pdvs.map((p) => p.contato_tipo).filter(Boolean),
-                      ),
-                    ];
-                    const filtered = val
-                      ? unique.filter((n) =>
-                          n.toLowerCase().includes(val.toLowerCase()),
-                        )
-                      : unique;
-                    setTipoSuggestions(filtered);
-                    setShowTipoSugg(filtered.length > 0);
-                  }}
-                  onBlur={() => setTimeout(() => setShowTipoSugg(false), 150)}
-                  className="w-full rounded-lg border border-border-custom bg-bg px-3 py-2 text-sm"
-                  placeholder="Tipo: Dono, Gerente, Atendente..."
-                  autoComplete="off"
-                />
-                {showTipoSugg && tipoSuggestions.length > 0 && (
-                  <ul className="absolute z-50 left-0 right-0 mt-1 bg-surface border border-border-custom rounded-lg shadow-lg max-h-40 overflow-y-auto">
-                    {tipoSuggestions.map((s) => (
-                      <li
-                        key={s}
-                        onMouseDown={() => {
-                          setFormPdv({ ...formPdv, contato_tipo: s });
-                          setShowTipoSugg(false);
-                        }}
-                        className="px-3 py-2 text-sm cursor-pointer hover:bg-primary-50 hover:text-primary-500"
-                      >
-                        {s}
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </div>
-              <input
-                type="text"
-                value={formPdv.contato_nome}
-                onChange={(e) =>
-                  setFormPdv({ ...formPdv, contato_nome: e.target.value })
-                }
-                className="w-full rounded-lg border border-border-custom bg-bg px-3 py-2 text-sm"
-                placeholder="Nome: Aline, Marcos..."
-              />
-              <input
-                type="text"
-                value={formPdv.contato}
-                onChange={(e) =>
-                  setFormPdv({ ...formPdv, contato: e.target.value })
-                }
-                className="w-full rounded-lg border border-border-custom bg-bg px-3 py-2 text-sm"
-                placeholder="Telefone / WhatsApp"
-              />
+              {(formPdv.contatos || []).map((ct, ci) => (
+                <div key={ci} className="flex gap-1 items-center">
+                  <input
+                    type="text"
+                    list="contato-tipos-list"
+                    value={ct.tipo}
+                    onChange={(e) => {
+                      const next = [...formPdv.contatos];
+                      next[ci] = { ...ct, tipo: e.target.value };
+                      setFormPdv({ ...formPdv, contatos: next });
+                    }}
+                    className="w-full rounded-lg border border-border-custom bg-bg px-2 py-2 text-sm min-w-0"
+                    placeholder="Tipo"
+                  />
+                  <input
+                    type="text"
+                    value={ct.nome}
+                    onChange={(e) => {
+                      const next = [...formPdv.contatos];
+                      next[ci] = { ...ct, nome: e.target.value };
+                      setFormPdv({ ...formPdv, contatos: next });
+                    }}
+                    className="w-full rounded-lg border border-border-custom bg-bg px-2 py-2 text-sm min-w-0"
+                    placeholder="Nome"
+                  />
+                  <input
+                    type="text"
+                    value={ct.telefone}
+                    onChange={(e) => {
+                      const next = [...formPdv.contatos];
+                      next[ci] = { ...ct, telefone: e.target.value };
+                      setFormPdv({ ...formPdv, contatos: next });
+                    }}
+                    className="w-full rounded-lg border border-border-custom bg-bg px-2 py-2 text-sm min-w-0"
+                    placeholder="Telefone"
+                  />
+                  {formPdv.contatos.length > 1 && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const next = formPdv.contatos.filter(
+                          (_, i) => i !== ci,
+                        );
+                        setFormPdv({ ...formPdv, contatos: next });
+                      }}
+                      className="text-text-disabled hover:text-error p-0.5 shrink-0"
+                    >
+                      <X size={14} />
+                    </button>
+                  )}
+                </div>
+              ))}
             </div>
           </div>
           <div className="grid grid-cols-2 gap-3">
@@ -2200,98 +2432,80 @@ export default function Revenda() {
             />
           </div>
           <div>
-            <label className="block text-sm font-medium mb-1">Contato</label>
+            <div className="flex items-center justify-between mb-1">
+              <label className="block text-sm font-medium">Contatos</label>
+              <button
+                type="button"
+                onClick={() =>
+                  setFormFornecedor({
+                    ...formFornecedor,
+                    contatos: [
+                      ...formFornecedor.contatos,
+                      { tipo: "", nome: "", telefone: "" },
+                    ],
+                  })
+                }
+                className="text-xs text-primary-500 hover:text-primary-600 font-medium"
+              >
+                + Adicionar
+              </button>
+            </div>
             <div className="space-y-2">
-              <div className="relative">
-                <input
-                  type="text"
-                  value={formFornecedor.contato_tipo}
-                  onChange={(e) => {
-                    const val = e.target.value;
-                    setFormFornecedor({ ...formFornecedor, contato_tipo: val });
-                    if (val.length > 0) {
-                      const unique = [
-                        ...new Set(
-                          [...pdvs, ...fornecedores]
-                            .map((x) => x.contato_tipo)
-                            .filter(Boolean),
-                        ),
-                      ];
-                      const filtered = unique.filter((n) =>
-                        n.toLowerCase().includes(val.toLowerCase()),
-                      );
-                      setTipoSuggestions(filtered);
-                      setShowTipoSugg(filtered.length > 0);
-                    } else {
-                      setShowTipoSugg(false);
-                    }
-                  }}
-                  onFocus={() => {
-                    const val = formFornecedor.contato_tipo;
-                    const unique = [
-                      ...new Set(
-                        [...pdvs, ...fornecedores]
-                          .map((x) => x.contato_tipo)
-                          .filter(Boolean),
-                      ),
-                    ];
-                    const filtered = val
-                      ? unique.filter((n) =>
-                          n.toLowerCase().includes(val.toLowerCase()),
-                        )
-                      : unique;
-                    setTipoSuggestions(filtered);
-                    setShowTipoSugg(filtered.length > 0);
-                  }}
-                  onBlur={() => setTimeout(() => setShowTipoSugg(false), 150)}
-                  className="w-full rounded-lg border border-border-custom bg-bg px-3 py-2 text-sm"
-                  placeholder="Tipo: Dono, Gerente, Atendente..."
-                  autoComplete="off"
-                />
-                {showTipoSugg && tipoSuggestions.length > 0 && (
-                  <ul className="absolute z-50 left-0 right-0 mt-1 bg-surface border border-border-custom rounded-lg shadow-lg max-h-40 overflow-y-auto">
-                    {tipoSuggestions.map((s) => (
-                      <li
-                        key={s}
-                        onMouseDown={() => {
-                          setFormFornecedor({
-                            ...formFornecedor,
-                            contato_tipo: s,
-                          });
-                          setShowTipoSugg(false);
-                        }}
-                        className="px-3 py-2 text-sm cursor-pointer hover:bg-primary-50 hover:text-primary-500"
-                      >
-                        {s}
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </div>
-              <input
-                type="text"
-                value={formFornecedor.contato_nome}
-                onChange={(e) =>
-                  setFormFornecedor({
-                    ...formFornecedor,
-                    contato_nome: e.target.value,
-                  })
-                }
-                className="w-full rounded-lg border border-border-custom bg-bg px-3 py-2 text-sm"
-                placeholder="Nome: Aline, Marcos..."
-              />
-              <input
-                type="text"
-                value={formFornecedor.contato}
-                onChange={(e) =>
-                  setFormFornecedor({
-                    ...formFornecedor,
-                    contato: e.target.value,
-                  })
-                }
-                className="w-full rounded-lg border border-border-custom bg-bg px-3 py-2 text-sm"
-                placeholder="Telefone / WhatsApp"
-              />
+              {(formFornecedor.contatos || []).map((ct, ci) => (
+                <div key={ci} className="flex gap-1 items-center">
+                  <input
+                    type="text"
+                    list="contato-tipos-list"
+                    value={ct.tipo}
+                    onChange={(e) => {
+                      const next = [...formFornecedor.contatos];
+                      next[ci] = { ...ct, tipo: e.target.value };
+                      setFormFornecedor({ ...formFornecedor, contatos: next });
+                    }}
+                    className="w-full rounded-lg border border-border-custom bg-bg px-2 py-2 text-sm min-w-0"
+                    placeholder="Tipo"
+                  />
+                  <input
+                    type="text"
+                    value={ct.nome}
+                    onChange={(e) => {
+                      const next = [...formFornecedor.contatos];
+                      next[ci] = { ...ct, nome: e.target.value };
+                      setFormFornecedor({ ...formFornecedor, contatos: next });
+                    }}
+                    className="w-full rounded-lg border border-border-custom bg-bg px-2 py-2 text-sm min-w-0"
+                    placeholder="Nome"
+                  />
+                  <input
+                    type="text"
+                    value={ct.telefone}
+                    onChange={(e) => {
+                      const next = [...formFornecedor.contatos];
+                      next[ci] = { ...ct, telefone: e.target.value };
+                      setFormFornecedor({ ...formFornecedor, contatos: next });
+                    }}
+                    className="w-full rounded-lg border border-border-custom bg-bg px-2 py-2 text-sm min-w-0"
+                    placeholder="Telefone"
+                  />
+                  {formFornecedor.contatos.length > 1 && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const next = formFornecedor.contatos.filter(
+                          (_, i) => i !== ci,
+                        );
+                        setFormFornecedor({
+                          ...formFornecedor,
+                          contatos: next,
+                        });
+                      }}
+                      className="text-text-disabled hover:text-error p-0.5 shrink-0"
+                    >
+                      <X size={14} />
+                    </button>
+                  )}
+                </div>
+              ))}
             </div>
           </div>
           <div className="grid grid-cols-2 gap-3">
@@ -3164,6 +3378,20 @@ export default function Revenda() {
           onCancel={() => setModal(null)}
         />
       </Modal>
+
+      <datalist id="contato-tipos-list">
+        {[
+          ...new Set(
+            [...pdvs, ...fornecedores]
+              .flatMap((x) => (x.contatos || []).map((c) => c.tipo))
+              .filter(Boolean),
+          ),
+        ]
+          .sort()
+          .map((t) => (
+            <option key={t} value={t} />
+          ))}
+      </datalist>
     </div>
   );
 }

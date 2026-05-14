@@ -581,7 +581,9 @@ function FormConsumo({ data, onChange, onSave, saving }) {
 
 // ── Página principal ───────────────────────────────────
 
-const today = new Date().toISOString().slice(0, 10);
+const today = new Date().toLocaleDateString("sv-SE", {
+  timeZone: "America/Sao_Paulo",
+});
 const TABLE_MAP = {
   producao: "gelo_producao",
   despesas: "gelo_despesas",
@@ -682,7 +684,9 @@ export default function Gelo() {
       // Fetch 7-day comparison: production vs consumption
       const sevenDaysAgo = new Date();
       sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 6);
-      const startDate = sevenDaysAgo.toISOString().slice(0, 10);
+      const startDate = sevenDaysAgo.toLocaleDateString("sv-SE", {
+        timeZone: "America/Sao_Paulo",
+      });
       const [{ data: prodDays }, { data: logsDays }] = await Promise.all([
         supabase
           .from("gelo_producao")
@@ -700,7 +704,9 @@ export default function Gelo() {
       for (let i = 6; i >= 0; i--) {
         const d = new Date();
         d.setDate(d.getDate() - i);
-        const ds = d.toISOString().slice(0, 10);
+        const ds = d.toLocaleDateString("sv-SE", {
+          timeZone: "America/Sao_Paulo",
+        });
         const prod = (prodDays || [])
           .filter((p) => p.data === ds)
           .reduce((s, p) => s + Number(p.quantidade || 0), 0);

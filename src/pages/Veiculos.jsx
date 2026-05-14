@@ -20,7 +20,9 @@ import {
   Pencil,
 } from "lucide-react";
 
-const today = new Date().toISOString().slice(0, 10);
+const today = new Date().toLocaleDateString("sv-SE", {
+  timeZone: "America/Sao_Paulo",
+});
 
 const TABS = [
   { key: "abastecimentos", label: "Abastecimentos", icon: Fuel },
