@@ -725,7 +725,7 @@ export default function Veiculos() {
   };
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 -mx-2">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <Car className="text-accent-500" size={22} />

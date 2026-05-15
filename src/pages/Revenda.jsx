@@ -25,8 +25,10 @@ import {
   Wallet,
   DollarSign,
   Zap,
+  BarChart3,
 } from "lucide-react";
 import Reposicao from "./Reposicao";
+import Gerencial from "./Revenda/Abas/Gerencial";
 
 const today = new Date().toLocaleDateString("sv-SE", {
   timeZone: "America/Sao_Paulo",
@@ -47,6 +49,7 @@ const TABS = [
   { key: "entradas", label: "Entradas", icon: ArrowDownCircle },
   { key: "saidas", label: "Saídas", icon: ArrowUpCircle },
   { key: "reposicao", label: "Reposição", icon: Zap },
+  { key: "gerencial", label: "Gerencial", icon: BarChart3 },
   { key: "cadastro", label: "Cadastro", icon: Package },
 ];
 
@@ -1501,7 +1504,7 @@ export default function Revenda() {
   // ── Render ──
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 -mx-2">
       {/* Header */}
       <div className="flex items-center justify-between min-h-[40px]">
         <div className="flex items-center gap-2 shrink-0">
@@ -1573,6 +1576,8 @@ export default function Revenda() {
         <div className="flex justify-center py-12">
           <div className="animate-spin h-8 w-8 border-3 border-primary-500 border-t-transparent rounded-full" />
         </div>
+      ) : tab === "gerencial" ? (
+        <Gerencial embedded />
       ) : tab === "reposicao" ? (
         <Reposicao embedded />
       ) : tab === "cadastro" ? (

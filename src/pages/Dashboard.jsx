@@ -313,7 +313,7 @@ export default function Dashboard() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 -mx-2">
       {/* Saudação */}
       <div>
         <h1 className="text-2xl font-bold text-text-primary">Dashboard</h1>

@@ -492,7 +492,7 @@ export default function Reposicao({ embedded = false }) {
   ];
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 -mx-2">
       {/* Header */}
       {!embedded && (
         <div className="flex items-center justify-between">

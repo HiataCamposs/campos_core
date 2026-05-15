@@ -1088,7 +1088,7 @@ export default function Gelo() {
     d ? new Date(d + "T00:00:00").toLocaleDateString("pt-BR") : "—";
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 -mx-2">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <Snowflake className="text-accent-500" size={22} />
