@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useMemo } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { supabase } from "../lib/supabaseClient";
 import { useBottomTabs } from "../contexts/BottomTabsContext";
 import {
@@ -293,6 +293,7 @@ export default function Reposicao({ embedded = false }) {
   const [filtro, setFiltro] = useState("todos");
   const [filtroNatureza, setFiltroNatureza] = useState("Gelo");
   const [showFiltros, setShowFiltros] = useState(false);
+  const [refreshKey, setRefreshKey] = useState(0);
 
   // Bottom tabs (mobile)
   useEffect(() => {
@@ -301,58 +302,65 @@ export default function Reposicao({ embedded = false }) {
     return () => setTabs(null);
   }, [setTabs, embedded]);
 
-  const fetchData = useCallback(async () => {
-    setLoading(true);
-    const [
-      { data: pdvData },
-      { data: saidasData },
-      { data: contatosData },
-      { data: prodData },
-    ] = await Promise.all([
-      supabase
-        .from("revenda_pdvs")
-        .select("id, nome, natureza")
-        .is("deleted_at", null)
-        .order("nome"),
-      supabase
-        .from("revenda_mov_saidas")
-        .select(
-          "id, pdv_id, data, is_perda, revenda_mov_saidas_itens(produto_id, quantidade, valor_venda_unitario, valor_compra_unitario)",
-        )
-        .is("deleted_at", null)
-        .eq("is_perda", false)
-        .order("data", { ascending: true }),
-      supabase
-        .from("cadastro_contatos")
-        .select("entidade_id, telefone")
-        .eq("entidade_tipo", "pdv")
-        .is("deleted_at", null),
-      supabase
-        .from("revenda_produtos")
-        .select("id, nome, natureza")
-        .is("deleted_at", null),
-    ]);
-    // Flatten saidas: one row per item for analytics
-    const flatSaidas = (saidasData || []).flatMap((s) =>
-      (s.revenda_mov_saidas_itens || []).map((item) => ({
-        pdv_id: s.pdv_id,
-        data: s.data,
-        produto_id: item.produto_id,
-        quantidade: item.quantidade,
-        valor_venda_unitario: item.valor_venda_unitario,
-        valor_compra_unitario: item.valor_compra_unitario,
-      })),
-    );
-    setPdvs(pdvData || []);
-    setSaidas(flatSaidas);
-    setContatos(contatosData || []);
-    setProdutos(prodData || []);
-    setLoading(false);
-  }, []);
-
   useEffect(() => {
+    let ignore = false;
+
+    async function fetchData() {
+      setLoading(true);
+      const [
+        { data: pdvData },
+        { data: saidasData },
+        { data: contatosData },
+        { data: prodData },
+      ] = await Promise.all([
+        supabase
+          .from("revenda_pdvs")
+          .select("id, nome, natureza")
+          .is("deleted_at", null)
+          .order("nome"),
+        supabase
+          .from("revenda_mov_saidas")
+          .select(
+            "id, pdv_id, data, is_perda, revenda_mov_saidas_itens(produto_id, quantidade, valor_venda_unitario, valor_compra_unitario)",
+          )
+          .is("deleted_at", null)
+          .eq("is_perda", false)
+          .order("data", { ascending: true }),
+        supabase
+          .from("cadastro_contatos")
+          .select("entidade_id, telefone")
+          .eq("entidade_tipo", "pdv")
+          .is("deleted_at", null),
+        supabase
+          .from("revenda_produtos")
+          .select("id, nome, natureza")
+          .is("deleted_at", null),
+      ]);
+
+      if (ignore) return;
+
+      const flatSaidas = (saidasData || []).flatMap((s) =>
+        (s.revenda_mov_saidas_itens || []).map((item) => ({
+          pdv_id: s.pdv_id,
+          data: s.data,
+          produto_id: item.produto_id,
+          quantidade: item.quantidade,
+          valor_venda_unitario: item.valor_venda_unitario,
+          valor_compra_unitario: item.valor_compra_unitario,
+        })),
+      );
+      setPdvs(pdvData || []);
+      setSaidas(flatSaidas);
+      setContatos(contatosData || []);
+      setProdutos(prodData || []);
+      setLoading(false);
+    }
+
     fetchData();
-  }, [fetchData]);
+    return () => {
+      ignore = true;
+    };
+  }, [refreshKey]);
 
   // ── Unique product naturezas for filter ──
   const naturezaOptions = useMemo(() => {
@@ -501,7 +509,7 @@ export default function Reposicao({ embedded = false }) {
             <h1 className="text-xl font-bold text-text-primary">Reposição</h1>
           </div>
           <button
-            onClick={fetchData}
+            onClick={() => setRefreshKey((k) => k + 1)}
             className="p-2 rounded-lg hover:bg-surface-alt text-text-disabled hover:text-primary-500 transition-colors"
             title="Atualizar"
           >

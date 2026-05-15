@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useMemo } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { supabase } from "../../../lib/supabaseClient";
 import {
   DollarSign,
@@ -104,63 +104,72 @@ export default function Gerencial() {
   const [produtos, setProdutos] = useState([]);
   const [formasPagamento, setFormasPagamento] = useState([]);
 
-  const fetchData = useCallback(async () => {
-    setLoading(true);
-    const [
-      { data: saidasData },
-      { data: pdvsData },
-      { data: produtosData },
-      { data: formasData },
-    ] = await Promise.all([
-      supabase
-        .from("revenda_mov_saidas")
-        .select("id, data, pdv_id, status_pagamento, is_perda")
-        .is("deleted_at", null)
-        .gte("data", startDate)
-        .lte("data", endDate),
-      supabase.from("revenda_pdvs").select("id, nome").is("deleted_at", null),
-      supabase
-        .from("revenda_produtos")
-        .select("id, nome, natureza")
-        .is("deleted_at", null),
-      supabase
-        .from("revenda_formas_pagamento")
-        .select("id, nome")
-        .is("deleted_at", null),
-    ]);
-
-    const saidasArr = (saidasData || []).filter((s) => !s.is_perda);
-    const saidaIds = saidasArr.map((s) => s.id);
-    setSaidas(saidasArr);
-    setPdvs(pdvsData || []);
-    setProdutos(produtosData || []);
-    setFormasPagamento(formasData || []);
-
-    if (saidaIds.length > 0) {
-      const [{ data: itensData }, { data: transData }] = await Promise.all([
-        supabase
-          .from("revenda_mov_saidas_itens")
-          .select(
-            "mov_id, produto_id, quantidade, valor_compra_unitario, valor_venda_unitario",
-          )
-          .in("mov_id", saidaIds),
-        supabase
-          .from("revenda_saida_transacoes")
-          .select("mov_id, forma_pagamento_id, valor, data")
-          .in("mov_id", saidaIds),
-      ]);
-      setSaidaItens(itensData || []);
-      setTransacoes(transData || []);
-    } else {
-      setSaidaItens([]);
-      setTransacoes([]);
-    }
-    setLoading(false);
-  }, [startDate, endDate]);
-
   useEffect(() => {
-    const _ignore = fetchData();
-  }, [fetchData]);
+    let ignore = false;
+
+    async function fetchData() {
+      setLoading(true);
+      const [
+        { data: saidasData },
+        { data: pdvsData },
+        { data: produtosData },
+        { data: formasData },
+      ] = await Promise.all([
+        supabase
+          .from("revenda_mov_saidas")
+          .select("id, data, pdv_id, status_pagamento, is_perda")
+          .is("deleted_at", null)
+          .gte("data", startDate)
+          .lte("data", endDate),
+        supabase.from("revenda_pdvs").select("id, nome").is("deleted_at", null),
+        supabase
+          .from("revenda_produtos")
+          .select("id, nome, natureza")
+          .is("deleted_at", null),
+        supabase
+          .from("revenda_formas_pagamento")
+          .select("id, nome")
+          .is("deleted_at", null),
+      ]);
+
+      if (ignore) return;
+
+      const saidasArr = (saidasData || []).filter((s) => !s.is_perda);
+      const saidaIds = saidasArr.map((s) => s.id);
+      setSaidas(saidasArr);
+      setPdvs(pdvsData || []);
+      setProdutos(produtosData || []);
+      setFormasPagamento(formasData || []);
+
+      if (saidaIds.length > 0) {
+        const [{ data: itensData }, { data: transData }] = await Promise.all([
+          supabase
+            .from("revenda_mov_saidas_itens")
+            .select(
+              "mov_id, produto_id, quantidade, valor_compra_unitario, valor_venda_unitario",
+            )
+            .in("mov_id", saidaIds),
+          supabase
+            .from("revenda_saida_transacoes")
+            .select("mov_id, forma_pagamento_id, valor, data")
+            .in("mov_id", saidaIds),
+        ]);
+        if (!ignore) {
+          setSaidaItens(itensData || []);
+          setTransacoes(transData || []);
+        }
+      } else {
+        setSaidaItens([]);
+        setTransacoes([]);
+      }
+      if (!ignore) setLoading(false);
+    }
+
+    fetchData();
+    return () => {
+      ignore = true;
+    };
+  }, [startDate, endDate]);
 
   // ── Naturezas únicas ──
   const naturezasUnicas = useMemo(() => {
