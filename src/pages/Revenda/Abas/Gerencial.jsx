@@ -71,7 +71,10 @@ const CustomTooltipBar = ({ active, payload, label }) => {
       <div className="bg-surface border border-border-custom rounded-lg px-3 py-2 shadow-lg text-xs">
         <p className="font-semibold mb-1">
           {label.length === 7
-            ? (() => { const [y, m] = label.split("-"); return `${m}/${y}`; })()
+            ? (() => {
+                const [y, m] = label.split("-");
+                return `${m}/${y}`;
+              })()
             : new Date(label + "T00:00:00").toLocaleDateString("pt-BR")}
         </p>
         {payload.map((p) => (
