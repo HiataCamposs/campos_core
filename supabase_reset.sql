@@ -39,4 +39,4 @@ drop table if exists gelo_vendas cascade;
 drop table if exists gelo_producao cascade;
 drop table if exists gelo_despesas cascade;
 
-drop table if exists lembretes cascade;
+drop table if exists agendamentos cascade;

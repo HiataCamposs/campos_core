@@ -24,13 +24,13 @@ export default function Dashboard() {
     geloVendasHoje: 0,
     revendaPendentes: 0,
     veiculosTotal: 0,
-    lembretesAbertos: 0,
-    lembretesAtrasados: 0,
+    agendamentosAbertos: 0,
+    agendamentosAtrasados: 0,
   });
 
   const [geloEstoque, setGeloEstoque] = useState([]);
   const [geloProducaoHoje, setGeloProducaoHoje] = useState(0);
-  const [proximosLembretes, setProximosLembretes] = useState([]);
+  const [proximosAgendamentos, setProximosAgendamentos] = useState([]);
   const [lastAbastData, setLastAbastData] = useState(null);
   const [lastManutData, setLastManutData] = useState(null);
   const [veiculosInfo, setVeiculosInfo] = useState([]);
@@ -46,9 +46,9 @@ export default function Dashboard() {
       { data: geloProducaoData },
       { count: revendaPendentes },
       { data: veiculosData },
-      { count: lembretesAbertos },
-      { count: lembretesAtrasados },
-      { data: proxLembretes },
+      { count: agendamentosAbertos },
+      { count: agendamentosAtrasados },
+      { data: proxAgendamentos },
       { data: lastAbast },
       { data: lastManut },
       { data: allAbast },
@@ -83,24 +83,23 @@ export default function Dashboard() {
         .select("id, modelo, placa, venda_data, created_at")
         .is("deleted_at", null),
       supabase
-        .from("lembretes")
+        .from("agendamentos")
         .select("*", { count: "exact", head: true })
         .is("deleted_at", null)
         .eq("concluido", false),
       supabase
-        .from("lembretes")
+        .from("agendamentos")
         .select("*", { count: "exact", head: true })
         .is("deleted_at", null)
         .eq("concluido", false)
-        .lt("data", today),
+        .lt("agendado_para", today),
       supabase
-        .from("lembretes")
+        .from("agendamentos")
         .select("*")
         .is("deleted_at", null)
         .eq("concluido", false)
-        .gte("data", today)
-        .order("data")
-        .order("hora", { nullsFirst: false })
+        .gte("agendado_para", today)
+        .order("agendado_para")
         .limit(5),
       supabase
         .from("veiculos_abastecimentos")
@@ -131,8 +130,8 @@ export default function Dashboard() {
       geloVendasHoje: vendasHoje,
       revendaPendentes: revendaPendentes || 0,
       veiculosTotal: (veiculosData || []).length,
-      lembretesAbertos: lembretesAbertos || 0,
-      lembretesAtrasados: lembretesAtrasados || 0,
+      agendamentosAbertos: agendamentosAbertos || 0,
+      agendamentosAtrasados: agendamentosAtrasados || 0,
     });
     // Gelo estoque (agrupar por descricao, somar estoque_atual)
     const geloEstMap = {};
@@ -152,7 +151,7 @@ export default function Dashboard() {
       0,
     );
     setGeloProducaoHoje(totalProd);
-    setProximosLembretes(proxLembretes || []);
+    setProximosAgendamentos(proxAgendamentos || []);
     // Last abastecimento/manutencao dates
     if (lastAbast && lastAbast.length > 0) setLastAbastData(lastAbast[0].data);
     if (lastManut && lastManut.length > 0) setLastManutData(lastManut[0].data);
@@ -264,13 +263,13 @@ export default function Dashboard() {
       ),
     },
     {
-      to: "/lembretes",
+      to: "/agendamentos",
       icon: Bell,
-      iconBg: stats.lembretesAtrasados > 0 ? "bg-red-50" : "bg-primary-50",
+      iconBg: stats.agendamentosAtrasados > 0 ? "bg-red-50" : "bg-primary-50",
       iconColor:
-        stats.lembretesAtrasados > 0 ? "text-error" : "text-primary-500",
-      label: "Lembretes",
-      value: `${stats.lembretesAbertos} pendentes${stats.lembretesAtrasados > 0 ? ` · ${stats.lembretesAtrasados} atrasados` : ""}`,
+        stats.agendamentosAtrasados > 0 ? "text-error" : "text-primary-500",
+      label: "Agendamentos",
+      value: `${stats.agendamentosAbertos} pendentes${stats.agendamentosAtrasados > 0 ? ` · ${stats.agendamentosAtrasados} atrasados` : ""}`,
     },
   ];
 
@@ -336,23 +335,23 @@ export default function Dashboard() {
         ))}
       </div>
 
-      {/* Próximos lembretes */}
-      {proximosLembretes.length > 0 && (
+      {/* Próximos agendamentos */}
+      {proximosAgendamentos.length > 0 && (
         <div className="bg-surface rounded-2xl border border-border-custom p-5">
           <div className="flex items-center justify-between mb-3">
             <h2 className="font-semibold text-text-primary flex items-center gap-2">
               <CalendarClock size={16} />
-              Próximos lembretes
+              Próximos agendamentos
             </h2>
             <Link
-              to="/lembretes"
+              to="/agendamentos"
               className="text-xs text-primary-500 font-medium hover:underline"
             >
               Ver todos
             </Link>
           </div>
           <div className="space-y-2">
-            {proximosLembretes.map((l) => (
+            {proximosAgendamentos.map((l) => (
               <div key={l.id} className="flex items-center gap-3 py-1.5">
                 <div
                   className={`h-2 w-2 rounded-full shrink-0 ${l.prioridade === "alta" ? "bg-error" : l.prioridade === "normal" ? "bg-accent-500" : "bg-text-disabled"}`}
@@ -361,8 +360,10 @@ export default function Dashboard() {
                   {l.titulo}
                 </span>
                 <span className="text-xs text-text-secondary shrink-0">
-                  {l.data === today ? "Hoje" : fmtDate(l.data)}
-                  {l.hora ? ` · ${l.hora.slice(0, 5)}` : ""}
+                  {l.agendado_para?.slice(0, 10) === today
+                    ? "Hoje"
+                    : fmtDate(l.agendado_para?.slice(0, 10))}
+                  {l.agendado_para ? ` · ${l.agendado_para.slice(11, 16)}` : ""}
                 </span>
               </div>
             ))}
@@ -371,16 +372,16 @@ export default function Dashboard() {
       )}
 
       {/* Alerta de atrasados */}
-      {stats.lembretesAtrasados > 0 && (
+      {stats.agendamentosAtrasados > 0 && (
         <Link
-          to="/lembretes"
+          to="/agendamentos"
           className="flex items-center gap-3 bg-red-50 border border-error/20 rounded-xl p-4 hover:border-error/40 transition-colors"
         >
           <AlertTriangle className="text-error shrink-0" size={20} />
           <p className="text-sm text-error font-medium">
-            Você tem {stats.lembretesAtrasados} lembrete
-            {stats.lembretesAtrasados > 1 ? "s" : ""} atrasado
-            {stats.lembretesAtrasados > 1 ? "s" : ""}!
+            Você tem {stats.agendamentosAtrasados} agendamento
+            {stats.agendamentosAtrasados > 1 ? "s" : ""} atrasado
+            {stats.agendamentosAtrasados > 1 ? "s" : ""}!
           </p>
         </Link>
       )}

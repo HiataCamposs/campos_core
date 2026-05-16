@@ -172,14 +172,13 @@ create table if not exists veiculos_manutencoes (
   user_id uuid references auth.users(id)
 );
 
--- ── 4. LEMBRETES ────────────────────────────────────────
+-- ── 4. AGENDAMENTOS ────────────────────────────────────────────────
 
-create table if not exists lembretes (
+create table if not exists agendamentos (
   id uuid default gen_random_uuid() primary key,
   titulo text not null,
   descricao text,
-  data date not null,
-  hora time,
+  agendado_para timestamptz not null,
   concluido boolean default false,
   prioridade text default 'normal',      -- baixa | normal | alta
   created_at timestamptz default now(),
@@ -200,7 +199,7 @@ alter table revenda_movimentacoes enable row level security;
 alter table veiculos enable row level security;
 alter table veiculos_abastecimentos enable row level security;
 alter table veiculos_manutencoes enable row level security;
-alter table lembretes enable row level security;
+alter table agendamentos enable row level security;
 
 -- Políticas: cada user vê apenas seus dados
 create policy "user_own_data" on gelo_producao for all using (auth.uid() = user_id);
@@ -214,4 +213,4 @@ create policy "user_own_data" on revenda_movimentacoes for all using (auth.uid()
 create policy "user_own_data" on veiculos for all using (auth.uid() = user_id);
 create policy "user_own_data" on veiculos_abastecimentos for all using (auth.uid() = user_id);
 create policy "user_own_data" on veiculos_manutencoes for all using (auth.uid() = user_id);
-create policy "user_own_data" on lembretes for all using (auth.uid() = user_id);
+create policy "user_own_data" on agendamentos for all using (auth.uid() = user_id);

@@ -6,7 +6,7 @@ import Dashboard from "./pages/Dashboard";
 import Gelo from "./pages/Gelo";
 import Revenda from "./pages/Revenda";
 import Veiculos from "./pages/Veiculos";
-import Lembretes from "./pages/Lembretes";
+import Agendamentos from "./pages/Agendamentos";
 
 function ProtectedRoute({ children }) {
   const { user, loading } = useAuth();
@@ -38,7 +38,7 @@ function AppRoutes() {
         <Route path="gelo" element={<Gelo />} />
         <Route path="revenda" element={<Revenda />} />
         <Route path="veiculos" element={<Veiculos />} />
-        <Route path="lembretes" element={<Lembretes />} />
+        <Route path="agendamentos" element={<Agendamentos />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

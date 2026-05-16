@@ -15,7 +15,9 @@ import {
   Pencil,
 } from "lucide-react";
 
-const today = new Date().toISOString().slice(0, 10);
+const today = new Date().toLocaleDateString("sv-SE", {
+  timeZone: "America/Sao_Paulo",
+});
 
 const PRIORIDADE_COLORS = {
   baixa: "text-text-disabled",
@@ -42,7 +44,7 @@ function fmtISO(date) {
   return date.toISOString().slice(0, 10);
 }
 
-export default function Lembretes() {
+export default function Agendamentos() {
   const { user } = useAuth();
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -66,11 +68,10 @@ export default function Lembretes() {
   const fetchData = useCallback(async () => {
     setLoading(true);
     let query = supabase
-      .from("lembretes")
+      .from("agendamentos")
       .select("*")
       .is("deleted_at", null)
-      .order("data")
-      .order("hora", { nullsFirst: false });
+      .order("agendado_para");
     if (filtro === "pendentes") query = query.eq("concluido", false);
     const { data } = await query.limit(200);
     setItems(data || []);
@@ -84,16 +85,21 @@ export default function Lembretes() {
   const handleSave = async (e) => {
     e.preventDefault();
     setSaving(true);
+    const agendado_para = form.hora
+      ? `${form.data}T${form.hora}:00`
+      : `${form.data}T00:00:00`;
     const payload = {
-      ...form,
-      hora: form.hora || null,
+      titulo: form.titulo,
+      descricao: form.descricao || null,
+      prioridade: form.prioridade,
+      agendado_para,
     };
     if (editingId) {
       delete payload.user_id;
-      await supabase.from("lembretes").update(payload).eq("id", editingId);
+      await supabase.from("agendamentos").update(payload).eq("id", editingId);
     } else {
       payload.user_id = user.id;
-      await supabase.from("lembretes").insert(payload);
+      await supabase.from("agendamentos").insert(payload);
     }
     setSaving(false);
     setModal(null);
@@ -103,13 +109,16 @@ export default function Lembretes() {
   };
 
   const toggleConcluido = async (id, atual) => {
-    await supabase.from("lembretes").update({ concluido: !atual }).eq("id", id);
+    await supabase
+      .from("agendamentos")
+      .update({ concluido: !atual })
+      .eq("id", id);
     fetchData();
   };
 
   const handleDelete = async () => {
     await supabase
-      .from("lembretes")
+      .from("agendamentos")
       .update({ deleted_at: new Date().toISOString() })
       .eq("id", deleteId);
     setModal(null);
@@ -117,11 +126,16 @@ export default function Lembretes() {
     fetchData();
   };
 
-  const fmtDate = (d) =>
-    d ? new Date(d + "T00:00:00").toLocaleDateString("pt-BR") : "—";
+  const fmtDate = (d) => (d ? new Date(d).toLocaleDateString("pt-BR") : "—");
 
-  const isAtrasado = (item) => !item.concluido && item.data < today;
-  const isHoje = (item) => item.data === today;
+  // Derive date string (yyyy-MM-dd) from agendado_para
+  const getItemDate = (item) =>
+    item.agendado_para ? item.agendado_para.slice(0, 10) : "";
+  const getItemHora = (item) =>
+    item.agendado_para ? item.agendado_para.slice(11, 16) : "";
+
+  const isAtrasado = (item) => !item.concluido && getItemDate(item) < today;
+  const isHoje = (item) => getItemDate(item) === today;
 
   // ── Agenda helpers ──
   const windowStart = useMemo(() => {
@@ -158,13 +172,15 @@ export default function Lembretes() {
   const itemsByDate = useMemo(() => {
     const map = {};
     for (const it of items) {
-      if (!map[it.data]) map[it.data] = [];
-      map[it.data].push(it);
+      const d = getItemDate(it);
+      if (!d) continue;
+      if (!map[d]) map[d] = [];
+      map[d].push(it);
     }
-    // Sort by hora within each day
+    // Sort by time within each day
     for (const key of Object.keys(map)) {
       map[key].sort((a, b) =>
-        (a.hora || "99:99").localeCompare(b.hora || "99:99"),
+        (getItemHora(a) || "99:99").localeCompare(getItemHora(b) || "99:99"),
       );
     }
     return map;
@@ -175,8 +191,8 @@ export default function Lembretes() {
     setForm({
       titulo: item.titulo,
       descricao: item.descricao || "",
-      data: item.data,
-      hora: item.hora ? item.hora.slice(0, 5) : "",
+      data: getItemDate(item),
+      hora: getItemHora(item) || "",
       prioridade: item.prioridade || "normal",
     });
     setModal("add");
@@ -226,8 +242,8 @@ export default function Lembretes() {
           )}
         </div>
         <div className="flex items-center gap-1.5 text-[10px] text-text-disabled">
-          {item.hora && <span>{item.hora.slice(0, 5)}</span>}
-          {!compact && <span>{fmtDate(item.data)}</span>}
+          {getItemHora(item) && <span>{getItemHora(item)}</span>}
+          {!compact && <span>{fmtDate(getItemDate(item))}</span>}
           <span
             className={`${PRIORIDADE_COLORS[item.prioridade]} font-medium capitalize`}
           >
@@ -262,7 +278,7 @@ export default function Lembretes() {
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <Bell className="text-accent-500" size={22} />
-          <h1 className="text-xl font-bold text-text-primary">Lembretes</h1>
+          <h1 className="text-xl font-bold text-text-primary">Agendamentos</h1>
         </div>
         <button
           onClick={() => openAdd(null)}
@@ -437,11 +453,11 @@ export default function Lembretes() {
             <label className="block text-xs font-medium mb-0.5">
               Descrição
             </label>
-            <input
-              type="text"
+            <textarea
+              rows={4}
               value={form.descricao}
               onChange={(e) => setForm({ ...form, descricao: e.target.value })}
-              className="w-full rounded-lg border border-border-custom bg-bg px-3 py-1.5 text-sm"
+              className="w-full rounded-lg border border-border-custom bg-bg px-3 py-1.5 text-sm resize-none"
             />
           </div>
           <div className="grid grid-cols-2 gap-2">
@@ -462,7 +478,9 @@ export default function Lembretes() {
                   value={form.hora ? form.hora.split(":")[0] : ""}
                   onChange={(e) => {
                     const h = e.target.value;
-                    const m = form.hora ? form.hora.split(":")[1] || "00" : "00";
+                    const m = form.hora
+                      ? form.hora.split(":")[1] || "00"
+                      : "00";
                     setForm({ ...form, hora: h ? `${h}:${m}` : "" });
                   }}
                   className="flex-1 rounded-lg border border-border-custom bg-bg px-2 py-1.5 text-sm"
@@ -478,7 +496,9 @@ export default function Lembretes() {
                 <select
                   value={form.hora ? form.hora.split(":")[1] || "00" : ""}
                   onChange={(e) => {
-                    const h = form.hora ? form.hora.split(":")[0] || "00" : "00";
+                    const h = form.hora
+                      ? form.hora.split(":")[0] || "00"
+                      : "00";
                     const m = e.target.value;
                     setForm({ ...form, hora: m ? `${h}:${m}` : "" });
                   }}

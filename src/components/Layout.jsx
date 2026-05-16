@@ -21,7 +21,7 @@ const NAV_ITEMS = [
   { to: "/gelo", label: "Gelo", icon: Snowflake },
   { to: "/revenda", label: "Revenda", icon: Package },
   { to: "/veiculos", label: "Veículos", icon: Car },
-  { to: "/lembretes", label: "Lembretes", icon: Bell },
+  { to: "/agendamentos", label: "Agendamentos", icon: Bell },
 ];
 
 function BottomBar() {
