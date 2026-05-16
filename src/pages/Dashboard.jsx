@@ -27,7 +27,7 @@ export default function Dashboard() {
     lembretesAbertos: 0,
     lembretesAtrasados: 0,
   });
-  const [revendaEstoque, setRevendaEstoque] = useState([]);
+
   const [geloEstoque, setGeloEstoque] = useState([]);
   const [geloProducaoHoje, setGeloProducaoHoje] = useState(0);
   const [proximosLembretes, setProximosLembretes] = useState([]);
@@ -44,8 +44,6 @@ export default function Dashboard() {
       { data: geloVendas },
       { data: geloEstoqueData },
       { data: geloProducaoData },
-      { data: revendaMovs },
-      { data: revendaNaturezas },
       { count: revendaPendentes },
       { data: veiculosData },
       { count: lembretesAbertos },
@@ -76,19 +74,10 @@ export default function Dashboard() {
         .is("deleted_at", null)
         .gte("data", sevenDaysAgo),
       supabase
-        .from("revenda_movimentacoes")
-        .select("tipo, produto_id, quantidade")
-        .is("deleted_at", null),
-      supabase
-        .from("revenda_produtos")
-        .select("id, nome")
-        .is("deleted_at", null),
-      supabase
-        .from("revenda_movimentacoes")
+        .from("revenda_mov_saidas")
         .select("*", { count: "exact", head: true })
         .is("deleted_at", null)
-        .eq("tipo", "saida")
-        .eq("status_pagamento", "pendente"),
+        .neq("status_pagamento", "pago"),
       supabase
         .from("veiculos")
         .select("id, modelo, placa, venda_data, created_at")
@@ -137,23 +126,6 @@ export default function Dashboard() {
       0,
     );
 
-    // Calcular estoque por produto (entradas - saídas)
-    const estoqueMap = {};
-    (revendaMovs || []).forEach((m) => {
-      if (!m.produto_id) return;
-      if (!estoqueMap[m.produto_id]) estoqueMap[m.produto_id] = 0;
-      estoqueMap[m.produto_id] +=
-        m.tipo === "entrada" ? m.quantidade : -m.quantidade;
-    });
-    const nomeMap = {};
-    (revendaNaturezas || []).forEach((n) => {
-      nomeMap[n.id] = n.nome;
-    });
-    const estoque = Object.entries(estoqueMap)
-      .filter(([id]) => nomeMap[id])
-      .map(([id, qty]) => ({ nome: nomeMap[id], qty }))
-      .sort((a, b) => a.nome.localeCompare(b.nome));
-
     setStats({
       geloHoje: geloHoje || 0,
       geloVendasHoje: vendasHoje,
@@ -162,7 +134,6 @@ export default function Dashboard() {
       lembretesAbertos: lembretesAbertos || 0,
       lembretesAtrasados: lembretesAtrasados || 0,
     });
-    setRevendaEstoque(estoque);
     // Gelo estoque (agrupar por descricao, somar estoque_atual)
     const geloEstMap = {};
     (geloEstoqueData || []).forEach((d) => {
@@ -250,7 +221,6 @@ export default function Dashboard() {
         stats.revendaPendentes > 0
           ? `${stats.revendaPendentes} saídas pendentes`
           : "Nenhuma pendência",
-      estoque: revendaEstoque,
     },
     {
       to: "/veiculos",

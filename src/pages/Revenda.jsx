@@ -118,16 +118,25 @@ function MovCard({
   const sp = mov.status_pagamento; // pendente | parcial | pago
   const itens = mov.itens || [];
 
-  // Summaries
-  const totalQty = itens.reduce((s, i) => s + (i.quantidade || 0), 0);
-  const totalCompra = itens.reduce(
-    (s, i) => s + (i.quantidade || 0) * (i.valor_compra_unitario || 0),
-    0,
-  );
-  const totalVenda = itens.reduce(
-    (s, i) => s + (i.quantidade || 0) * (i.valor_venda_unitario || 0),
-    0,
-  );
+  // Summaries (pre-calculated via DB trigger, fallback to itens if needed)
+  const totalQty =
+    mov.total_qty != null
+      ? Number(mov.total_qty)
+      : itens.reduce((s, i) => s + (i.quantidade || 0), 0);
+  const totalCompra =
+    mov.total_compra != null
+      ? Number(mov.total_compra)
+      : itens.reduce(
+          (s, i) => s + (i.quantidade || 0) * (i.valor_compra_unitario || 0),
+          0,
+        );
+  const totalVenda =
+    mov.total_venda != null
+      ? Number(mov.total_venda)
+      : itens.reduce(
+          (s, i) => s + (i.quantidade || 0) * (i.valor_venda_unitario || 0),
+          0,
+        );
   const Icon = isEntrada ? ArrowDownCircle : ArrowUpCircle;
   const statusColors = isEntrada
     ? {
@@ -405,7 +414,7 @@ export default function Revenda() {
   const fetchNaturezas = useCallback(async () => {
     const { data } = await supabase
       .from("revenda_produtos")
-      .select("*")
+      .select("id, nome, natureza, dimensao, tamanho")
       .is("deleted_at", null)
       .order("nome");
     setNaturezas(data || []);
@@ -414,7 +423,7 @@ export default function Revenda() {
   const fetchFormasPagamento = useCallback(async () => {
     const { data } = await supabase
       .from("revenda_formas_pagamento")
-      .select("*")
+      .select("id, nome")
       .is("deleted_at", null)
       .order("nome");
     setFormasPagamento(data || []);
@@ -423,20 +432,20 @@ export default function Revenda() {
   const fetchFornecedores = useCallback(async () => {
     const { data } = await supabase
       .from("revenda_fornecedores")
-      .select("*")
+      .select("id, nome, observacao")
       .is("deleted_at", null)
       .order("nome");
     const ids = (data || []).map((f) => f.id);
     const [{ data: contatos }, { data: enderecos }] = await Promise.all([
       supabase
         .from("cadastro_contatos")
-        .select("*")
+        .select("id, entidade_id, tipo, nome, telefone")
         .eq("entidade_tipo", "fornecedor")
         .in("entidade_id", ids)
         .is("deleted_at", null),
       supabase
         .from("cadastro_enderecos")
-        .select("*")
+        .select("id, entidade_id, cidade, bairro, logradouro, numero")
         .eq("entidade_tipo", "fornecedor")
         .in("entidade_id", ids)
         .is("deleted_at", null),
@@ -465,20 +474,20 @@ export default function Revenda() {
   const fetchPdvs = useCallback(async () => {
     const { data } = await supabase
       .from("revenda_pdvs")
-      .select("*")
+      .select("id, nome, natureza, observacao")
       .is("deleted_at", null)
       .order("nome");
     const ids = (data || []).map((p) => p.id);
     const [{ data: contatos }, { data: enderecos }] = await Promise.all([
       supabase
         .from("cadastro_contatos")
-        .select("*")
+        .select("id, entidade_id, tipo, nome, telefone")
         .eq("entidade_tipo", "pdv")
         .in("entidade_id", ids)
         .is("deleted_at", null),
       supabase
         .from("cadastro_enderecos")
-        .select("*")
+        .select("id, entidade_id, cidade, bairro, logradouro, numero")
         .eq("entidade_tipo", "pdv")
         .in("entidade_id", ids)
         .is("deleted_at", null),
@@ -510,7 +519,9 @@ export default function Revenda() {
         ? Promise.resolve({ data: [] })
         : supabase
             .from("revenda_mov_entradas")
-            .select("*, revenda_mov_entradas_itens(*)")
+            .select(
+              "id, data, fornecedor_id, nota_fiscal, observacao, total_qty, total_compra, created_at",
+            )
             .is("deleted_at", null)
             .order("data", { ascending: false })
             .limit(100);
@@ -520,7 +531,9 @@ export default function Revenda() {
         : (() => {
             let q = supabase
               .from("revenda_mov_saidas")
-              .select("*, revenda_mov_saidas_itens(*)")
+              .select(
+                "id, data, pdv_id, observacao, status_pagamento, is_perda, total_qty, total_compra, total_venda, created_at",
+              )
               .is("deleted_at", null)
               .order("data", { ascending: false })
               .limit(100);
@@ -533,13 +546,13 @@ export default function Revenda() {
     const all = [
       ...(entradas || []).map((e) => ({
         ...e,
-        itens: e.revenda_mov_entradas_itens || [],
+        itens: [],
         _tipo: "entrada",
         _table: "revenda_mov_entradas",
       })),
       ...(saidas || []).map((s) => ({
         ...s,
-        itens: s.revenda_mov_saidas_itens || [],
+        itens: [],
         _tipo: "saida",
         _table: "revenda_mov_saidas",
       })),
@@ -558,29 +571,28 @@ export default function Revenda() {
     setMovimentacoes(all);
   }, [tab]);
 
+  // Effect 1: Static data (runs once on mount)
+  useEffect(() => {
+    fetchNaturezas();
+    fetchFornecedores();
+    fetchPdvs();
+    fetchFormasPagamento();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Effect 2: Movimentações (runs when tab changes)
   useEffect(() => {
     let cancelled = false;
     (async () => {
       setLoading(true);
-      await Promise.all([
-        fetchNaturezas(),
-        fetchFornecedores(),
-        fetchPdvs(),
-        fetchMovimentacoes(),
-        fetchFormasPagamento(),
-      ]);
+      await fetchMovimentacoes();
       if (!cancelled) setLoading(false);
     })();
     return () => {
       cancelled = true;
     };
-  }, [
-    fetchNaturezas,
-    fetchFornecedores,
-    fetchPdvs,
-    fetchMovimentacoes,
-    fetchFormasPagamento,
-  ]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab]);
 
   // Register bottom tabs for mobile
   useEffect(() => {

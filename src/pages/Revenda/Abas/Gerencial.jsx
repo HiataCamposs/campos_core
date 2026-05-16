@@ -1,11 +1,10 @@
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState } from "react";
 import { supabase } from "../../../lib/supabaseClient";
 import {
   DollarSign,
   TrendingUp,
   Percent,
   AlertTriangle,
-  ChevronDown,
   ShoppingCart,
   Hash,
 } from "lucide-react";
@@ -21,8 +20,6 @@ import {
   YAxis,
   CartesianGrid,
   Legend,
-  LineChart,
-  Line,
 } from "recharts";
 
 const today = new Date().toLocaleDateString("sv-SE", {
@@ -96,225 +93,97 @@ export default function Gerencial() {
   const [filtroNatureza, setFiltroNatureza] = useState("");
   const [loading, setLoading] = useState(true);
 
-  // Raw data
-  const [saidas, setSaidas] = useState([]);
-  const [saidaItens, setSaidaItens] = useState([]);
-  const [transacoes, setTransacoes] = useState([]);
-  const [pdvs, setPdvs] = useState([]);
-  const [produtos, setProdutos] = useState([]);
-  const [formasPagamento, setFormasPagamento] = useState([]);
+  // RPC results
+  const [kpis, setKpis] = useState({
+    faturamento: 0,
+    lucro: 0,
+    margem: 0,
+    inadimplentes: 0,
+    pedidos: 0,
+    itens: 0,
+  });
+  const [barData, setBarData] = useState([]);
+  const [topPdvs, setTopPdvs] = useState([]);
+  const [topProdutos, setTopProdutos] = useState([]);
+  const [pieData, setPieData] = useState([]);
 
+  // For filter dropdowns only
+  const [produtos, setProdutos] = useState([]);
+  const [naturezasUnicas, setNaturezasUnicas] = useState([]);
+
+  // Fetch filter options (lightweight, only once)
+  useEffect(() => {
+    supabase
+      .from("revenda_produtos")
+      .select("id, nome, natureza")
+      .is("deleted_at", null)
+      .then(({ data }) => {
+        const prods = data || [];
+        setProdutos(prods);
+        const nats = [
+          ...new Set(prods.map((p) => p.natureza).filter(Boolean)),
+        ].sort();
+        setNaturezasUnicas(nats);
+      });
+  }, []);
+
+  // Fetch analytics via RPCs
   useEffect(() => {
     let ignore = false;
 
-    async function fetchData() {
+    async function fetchAnalytics() {
       setLoading(true);
-      const [
-        { data: saidasData },
-        { data: pdvsData },
-        { data: produtosData },
-        { data: formasData },
-      ] = await Promise.all([
-        supabase
-          .from("revenda_mov_saidas")
-          .select("id, data, pdv_id, status_pagamento, is_perda")
-          .is("deleted_at", null)
-          .gte("data", startDate)
-          .lte("data", endDate),
-        supabase.from("revenda_pdvs").select("id, nome").is("deleted_at", null),
-        supabase
-          .from("revenda_produtos")
-          .select("id, nome, natureza")
-          .is("deleted_at", null),
-        supabase
-          .from("revenda_formas_pagamento")
-          .select("id, nome")
-          .is("deleted_at", null),
+
+      const params = {
+        p_start: startDate,
+        p_end: endDate,
+        p_natureza: filtroNatureza || null,
+        p_produto: filtroProduto || null,
+      };
+
+      const [kpisRes, evolRes, pdvsRes, prodsRes, pagRes] = await Promise.all([
+        supabase.rpc("fn_gerencial_kpis", params),
+        supabase.rpc("fn_gerencial_evolucao", params),
+        supabase.rpc("fn_gerencial_top_pdvs", {
+          p_start: startDate,
+          p_end: endDate,
+          p_limit: 10,
+        }),
+        supabase.rpc("fn_gerencial_produtos", {
+          p_start: startDate,
+          p_end: endDate,
+          p_natureza: filtroNatureza || null,
+        }),
+        supabase.rpc("fn_gerencial_pagamentos", {
+          p_start: startDate,
+          p_end: endDate,
+        }),
       ]);
 
       if (ignore) return;
 
-      const saidasArr = (saidasData || []).filter((s) => !s.is_perda);
-      const saidaIds = saidasArr.map((s) => s.id);
-      setSaidas(saidasArr);
-      setPdvs(pdvsData || []);
-      setProdutos(produtosData || []);
-      setFormasPagamento(formasData || []);
-
-      if (saidaIds.length > 0) {
-        const [{ data: itensData }, { data: transData }] = await Promise.all([
-          supabase
-            .from("revenda_mov_saidas_itens")
-            .select(
-              "mov_id, produto_id, quantidade, valor_compra_unitario, valor_venda_unitario",
-            )
-            .in("mov_id", saidaIds),
-          supabase
-            .from("revenda_saida_transacoes")
-            .select("mov_id, forma_pagamento_id, valor, data")
-            .in("mov_id", saidaIds),
-        ]);
-        if (!ignore) {
-          setSaidaItens(itensData || []);
-          setTransacoes(transData || []);
-        }
-      } else {
-        setSaidaItens([]);
-        setTransacoes([]);
-      }
-      if (!ignore) setLoading(false);
+      setKpis(
+        kpisRes.data || {
+          faturamento: 0,
+          lucro: 0,
+          margem: 0,
+          inadimplentes: 0,
+          pedidos: 0,
+          itens: 0,
+        },
+      );
+      setBarData(evolRes.data || []);
+      setTopPdvs(pdvsRes.data || []);
+      setTopProdutos(prodsRes.data || []);
+      setPieData(pagRes.data || []);
+      setLoading(false);
     }
 
-    fetchData();
+    fetchAnalytics();
     return () => {
       ignore = true;
     };
-  }, [startDate, endDate]);
-
-  // ── Naturezas únicas ──
-  const naturezasUnicas = useMemo(() => {
-    const set = new Set(produtos.map((p) => p.natureza).filter(Boolean));
-    return [...set].sort();
-  }, [produtos]);
-
-  // ── Filtered data ──
-  const filteredProdutoIds = useMemo(() => {
-    let prods = produtos;
-    if (filtroNatureza)
-      prods = prods.filter((p) => p.natureza === filtroNatureza);
-    if (filtroProduto) prods = prods.filter((p) => p.id === filtroProduto);
-    return new Set(prods.map((p) => p.id));
-  }, [produtos, filtroProduto, filtroNatureza]);
-
-  const filteredItens = useMemo(() => {
-    if (!filtroProduto && !filtroNatureza) return saidaItens;
-    return saidaItens.filter((it) => filteredProdutoIds.has(it.produto_id));
-  }, [saidaItens, filtroProduto, filtroNatureza, filteredProdutoIds]);
-
-  const filteredSaidas = useMemo(() => {
-    if (!filtroProduto && !filtroNatureza) return saidas;
-    const movIds = new Set(filteredItens.map((it) => it.mov_id));
-    return saidas.filter((s) => movIds.has(s.id));
-  }, [saidas, filteredItens, filtroProduto, filtroNatureza]);
-
-  // ── Computed KPIs ──
-  const kpis = useMemo(() => {
-    let faturamento = 0;
-    let lucro = 0;
-    for (const it of filteredItens) {
-      const qty = Number(it.quantidade) || 0;
-      const venda = Number(it.valor_venda_unitario) || 0;
-      const compra = Number(it.valor_compra_unitario) || 0;
-      faturamento += qty * venda;
-      lucro += qty * (venda - compra);
-    }
-    const margem = faturamento > 0 ? (lucro / faturamento) * 100 : 0;
-    const inadimplencia = filteredSaidas.filter(
-      (s) => s.status_pagamento !== "pago",
-    ).length;
-    const pedidos = filteredSaidas.length;
-    let itensNegociados = 0;
-    for (const it of filteredItens) {
-      itensNegociados += Number(it.quantidade) || 0;
-    }
-    return {
-      faturamento,
-      lucro,
-      margem,
-      inadimplencia,
-      pedidos,
-      itensNegociados,
-    };
-  }, [filteredItens, filteredSaidas]);
-
-  // ── Pie: Métodos de pagamento ──
-  const pieData = useMemo(() => {
-    const map = {};
-    for (const t of transacoes) {
-      const fid = t.forma_pagamento_id;
-      map[fid] = (map[fid] || 0) + Number(t.valor);
-    }
-    return Object.entries(map)
-      .map(([fid, valor]) => ({
-        name: formasPagamento.find((f) => f.id === fid)?.nome || "Outro",
-        value: Math.round(valor * 100) / 100,
-      }))
-      .sort((a, b) => b.value - a.value);
-  }, [transacoes, formasPagamento]);
-
-  // ── Bar: Evolução diária ──
-  const barData = useMemo(() => {
-    const map = {};
-    const saidaDateMap = {};
-    for (const s of filteredSaidas) saidaDateMap[s.id] = s.data;
-
-    for (const it of filteredItens) {
-      const d = saidaDateMap[it.mov_id];
-      if (!d) continue;
-      const m = d.slice(0, 7); // yyyy-MM
-      if (!map[m]) map[m] = { date: m, faturamento: 0, lucro: 0 };
-      const qty = Number(it.quantidade) || 0;
-      const venda = Number(it.valor_venda_unitario) || 0;
-      const compra = Number(it.valor_compra_unitario) || 0;
-      map[m].faturamento += qty * venda;
-      map[m].lucro += qty * (venda - compra);
-    }
-    return Object.values(map).sort((a, b) => a.date.localeCompare(b.date));
-  }, [filteredItens, filteredSaidas]);
-
-  // ── Top PDVs ──
-  const topPdvs = useMemo(() => {
-    const saidaDateMap = {};
-    for (const s of saidas) saidaDateMap[s.id] = s.pdv_id;
-
-    const map = {};
-    for (const it of saidaItens) {
-      const pid = saidaDateMap[it.mov_id];
-      if (!pid) continue;
-      if (!map[pid]) map[pid] = { faturamento: 0, lucro: 0 };
-      const qty = Number(it.quantidade) || 0;
-      const venda = Number(it.valor_venda_unitario) || 0;
-      const compra = Number(it.valor_compra_unitario) || 0;
-      map[pid].faturamento += qty * venda;
-      map[pid].lucro += qty * (venda - compra);
-    }
-    return Object.entries(map)
-      .map(([pid, v]) => ({
-        nome: pdvs.find((p) => p.id === pid)?.nome || "—",
-        faturamento: v.faturamento,
-        lucro: v.lucro,
-        margem: v.faturamento > 0 ? (v.lucro / v.faturamento) * 100 : 0,
-      }))
-      .sort((a, b) => b.lucro - a.lucro)
-      .slice(0, 10);
-  }, [saidaItens, saidas, pdvs]);
-
-  // ── Performance Produtos ──
-  const topProdutos = useMemo(() => {
-    const map = {};
-    for (const it of filteredItens) {
-      const pid = it.produto_id;
-      if (!map[pid]) map[pid] = { qty: 0, totalCompra: 0, totalVenda: 0 };
-      const qty = Number(it.quantidade) || 0;
-      const venda = Number(it.valor_venda_unitario) || 0;
-      const compra = Number(it.valor_compra_unitario) || 0;
-      map[pid].qty += qty;
-      map[pid].totalCompra += qty * compra;
-      map[pid].totalVenda += qty * venda;
-    }
-    return Object.entries(map)
-      .map(([pid, v]) => ({
-        nome: produtos.find((p) => p.id === pid)?.nome || "—",
-        quantidade: v.qty,
-        custoMedio: v.qty > 0 ? v.totalCompra / v.qty : 0,
-        vendaMedio: v.qty > 0 ? v.totalVenda / v.qty : 0,
-        margem:
-          v.totalVenda > 0
-            ? ((v.totalVenda - v.totalCompra) / v.totalVenda) * 100
-            : 0,
-      }))
-      .sort((a, b) => b.quantidade - a.quantidade);
-  }, [filteredItens, produtos]);
+  }, [startDate, endDate, filtroNatureza, filtroProduto]);
 
   // ── Preset buttons ──
   const presets = [
@@ -428,10 +297,10 @@ export default function Gerencial() {
               },
               {
                 label: "Inadimplentes",
-                value: kpis.inadimplencia,
+                value: kpis.inadimplentes,
                 icon: AlertTriangle,
-                color: kpis.inadimplencia > 0 ? "text-warning" : "text-success",
-                bg: kpis.inadimplencia > 0 ? "bg-warning/10" : "bg-success/10",
+                color: kpis.inadimplentes > 0 ? "text-warning" : "text-success",
+                bg: kpis.inadimplentes > 0 ? "bg-warning/10" : "bg-success/10",
               },
               {
                 label: "Pedidos",
@@ -442,7 +311,7 @@ export default function Gerencial() {
               },
               {
                 label: "Itens",
-                value: kpis.itensNegociados,
+                value: kpis.itens,
                 icon: Hash,
                 color: "text-accent-500",
                 bg: "bg-accent-50",
@@ -657,10 +526,10 @@ export default function Gerencial() {
                           {p.quantidade}
                         </td>
                         <td className="px-2 py-1.5 text-right text-text-secondary whitespace-nowrap">
-                          {fmtMoney(p.custoMedio)}
+                          {fmtMoney(p.custo_medio)}
                         </td>
                         <td className="px-2 py-1.5 text-right text-text-secondary whitespace-nowrap">
-                          {fmtMoney(p.vendaMedio)}
+                          {fmtMoney(p.venda_medio)}
                         </td>
                         <td
                           className={`px-2 py-1.5 text-right font-medium whitespace-nowrap ${p.margem >= 20 ? "text-success" : p.margem >= 0 ? "text-warning" : "text-error"}`}

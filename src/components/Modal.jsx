@@ -16,9 +16,9 @@ export default function Modal({ open, onClose, title, children }) {
       <div className="absolute inset-0 bg-black/40" onClick={onClose} />
 
       {/* Painel */}
-      <div className="relative w-full max-w-lg bg-surface rounded-t-2xl sm:rounded-2xl border border-border-custom shadow-xl max-h-[90vh] flex flex-col animate-in slide-in-from-bottom">
+      <div className="relative w-full max-w-lg bg-surface rounded-t-2xl sm:rounded-2xl border border-border-custom shadow-xl max-h-[85vh] flex flex-col animate-in slide-in-from-bottom">
         {/* Header */}
-        <div className="flex items-center justify-between px-5 py-4 border-b border-border-custom">
+        <div className="flex items-center justify-between px-5 py-3 border-b border-border-custom">
           <h2 className="text-lg font-semibold text-text-primary">{title}</h2>
           <button
             onClick={onClose}
@@ -29,7 +29,7 @@ export default function Modal({ open, onClose, title, children }) {
         </div>
 
         {/* Body */}
-        <div className="px-5 py-4 overflow-y-auto flex-1">{children}</div>
+        <div className="px-5 py-3 overflow-y-auto flex-1">{children}</div>
       </div>
     </div>
   );

@@ -25,12 +25,10 @@ const PRIORIDADE_COLORS = {
 
 const DIAS_SEMANA = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
 
-// Returns Monday of the week containing `date`
-function getMonday(date) {
+// Returns the start of a 7-day rolling window (today at position 3, i.e. 2 days back)
+function getWindowStart(date) {
   const d = new Date(date);
-  const day = d.getDay();
-  const diff = d.getDate() - day + (day === 0 ? -6 : 1);
-  d.setDate(diff);
+  d.setDate(d.getDate() - 2);
   return d;
 }
 
@@ -60,7 +58,7 @@ export default function Lembretes() {
     titulo: "",
     descricao: "",
     data: today,
-    hora: "",
+    hora: "16:00",
     prioridade: "normal",
   };
   const [form, setForm] = useState(emptyForm);
@@ -126,14 +124,14 @@ export default function Lembretes() {
   const isHoje = (item) => item.data === today;
 
   // ── Agenda helpers ──
-  const monday = useMemo(() => {
-    const base = getMonday(new Date());
+  const windowStart = useMemo(() => {
+    const base = getWindowStart(new Date());
     return addDays(base, weekOffset * 7);
   }, [weekOffset]);
 
   const weekDays = useMemo(() => {
-    return Array.from({ length: 7 }, (_, i) => {
-      const d = addDays(monday, i);
+    return Array.from({ length: 6 }, (_, i) => {
+      const d = addDays(windowStart, i);
       return {
         date: fmtISO(d),
         dayName: DIAS_SEMANA[d.getDay()],
@@ -142,20 +140,20 @@ export default function Lembretes() {
         isToday: fmtISO(d) === today,
       };
     });
-  }, [monday]);
+  }, [windowStart]);
 
   const weekLabel = useMemo(() => {
-    const sun = addDays(monday, 6);
-    const m1 = monday.toLocaleDateString("pt-BR", {
+    const end = addDays(windowStart, 6);
+    const m1 = windowStart.toLocaleDateString("pt-BR", {
       day: "2-digit",
       month: "short",
     });
-    const m2 = sun.toLocaleDateString("pt-BR", {
+    const m2 = end.toLocaleDateString("pt-BR", {
       day: "2-digit",
       month: "short",
     });
     return `${m1} — ${m2}`;
-  }, [monday]);
+  }, [windowStart]);
 
   const itemsByDate = useMemo(() => {
     const map = {};
@@ -327,7 +325,7 @@ export default function Lembretes() {
                   onClick={() => setWeekOffset(0)}
                   className="text-[10px] text-primary-500 font-medium hover:underline"
                 >
-                  Voltar p/ esta semana
+                  Voltar p/ hoje
                 </button>
               )}
             </div>
@@ -423,54 +421,87 @@ export default function Lembretes() {
         }}
         title={editingId ? "Editar Lembrete" : "Novo Lembrete"}
       >
-        <form onSubmit={handleSave} className="space-y-3">
+        <form onSubmit={handleSave} className="space-y-2">
           <div>
-            <label className="block text-sm font-medium mb-1">Título</label>
+            <label className="block text-xs font-medium mb-0.5">Título</label>
             <input
               type="text"
               required
               value={form.titulo}
               onChange={(e) => setForm({ ...form, titulo: e.target.value })}
-              className="w-full rounded-lg border border-border-custom bg-bg px-3 py-2 text-sm"
+              className="w-full rounded-lg border border-border-custom bg-bg px-3 py-1.5 text-sm"
               placeholder="Ex: Pagar conta de luz"
             />
           </div>
           <div>
-            <label className="block text-sm font-medium mb-1">Descrição</label>
+            <label className="block text-xs font-medium mb-0.5">
+              Descrição
+            </label>
             <input
               type="text"
               value={form.descricao}
               onChange={(e) => setForm({ ...form, descricao: e.target.value })}
-              className="w-full rounded-lg border border-border-custom bg-bg px-3 py-2 text-sm"
+              className="w-full rounded-lg border border-border-custom bg-bg px-3 py-1.5 text-sm"
             />
           </div>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-2 gap-2">
             <div>
-              <label className="block text-sm font-medium mb-1">Data</label>
+              <label className="block text-xs font-medium mb-0.5">Data</label>
               <input
                 type="date"
                 required
                 value={form.data}
                 onChange={(e) => setForm({ ...form, data: e.target.value })}
-                className="w-full rounded-lg border border-border-custom bg-bg px-3 py-2 text-sm"
+                className="w-full rounded-lg border border-border-custom bg-bg px-3 py-1.5 text-sm"
               />
             </div>
             <div>
-              <label className="block text-sm font-medium mb-1">Hora</label>
-              <input
-                type="time"
-                value={form.hora}
-                onChange={(e) => setForm({ ...form, hora: e.target.value })}
-                className="w-full rounded-lg border border-border-custom bg-bg px-3 py-2 text-sm"
-              />
+              <label className="block text-xs font-medium mb-0.5">Hora</label>
+              <div className="flex gap-1 items-center">
+                <select
+                  value={form.hora ? form.hora.split(":")[0] : ""}
+                  onChange={(e) => {
+                    const h = e.target.value;
+                    const m = form.hora ? form.hora.split(":")[1] || "00" : "00";
+                    setForm({ ...form, hora: h ? `${h}:${m}` : "" });
+                  }}
+                  className="flex-1 rounded-lg border border-border-custom bg-bg px-2 py-1.5 text-sm"
+                >
+                  <option value="">--</option>
+                  {Array.from({ length: 24 }, (_, i) => (
+                    <option key={i} value={String(i).padStart(2, "0")}>
+                      {String(i).padStart(2, "0")}
+                    </option>
+                  ))}
+                </select>
+                <span className="text-text-disabled font-bold">:</span>
+                <select
+                  value={form.hora ? form.hora.split(":")[1] || "00" : ""}
+                  onChange={(e) => {
+                    const h = form.hora ? form.hora.split(":")[0] || "00" : "00";
+                    const m = e.target.value;
+                    setForm({ ...form, hora: m ? `${h}:${m}` : "" });
+                  }}
+                  className="flex-1 rounded-lg border border-border-custom bg-bg px-2 py-1.5 text-sm"
+                >
+                  <option value="">--</option>
+                  {[0, 10, 20, 30, 40, 50].map((m) => (
+                    <option key={m} value={String(m).padStart(2, "0")}>
+                      {String(m).padStart(2, "0")}
+                    </option>
+                  ))}
+                </select>
+              </div>
             </div>
           </div>
           <div>
-            <label className="block text-sm font-medium mb-1">Prioridade</label>
+            <label className="block text-xs font-medium mb-0.5">
+              Prioridade
+            </label>
             <select
               value={form.prioridade}
               onChange={(e) => setForm({ ...form, prioridade: e.target.value })}
-              className="w-full rounded-lg border border-border-custom bg-bg px-3 py-2 text-sm"
+              className="w-full rounded-lg border border-border-custom bg-bg px-3 py-1.5 text-sm"
             >
               <option value="baixa">Baixa</option>
               <option value="normal">Normal</option>
@@ -480,7 +511,7 @@ export default function Lembretes() {
           <button
             type="submit"
             disabled={saving}
-            className="w-full bg-primary-500 hover:bg-primary-600 disabled:opacity-50 text-white font-medium rounded-lg px-4 py-2.5 transition-colors"
+            className="w-full bg-primary-500 hover:bg-primary-600 disabled:opacity-50 text-white font-medium rounded-lg px-4 py-2 transition-colors"
           >
             {saving ? "Salvando..." : "Salvar"}
           </button>
