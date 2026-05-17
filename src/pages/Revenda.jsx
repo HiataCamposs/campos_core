@@ -414,7 +414,7 @@ export default function Revenda() {
   const fetchNaturezas = useCallback(async () => {
     const { data } = await supabase
       .from("revenda_produtos")
-      .select("id, nome, natureza, dimensao, tamanho")
+      .select("id, nome, natureza, dimensao, tamanho, custo_unitario")
       .is("deleted_at", null)
       .order("nome");
     setNaturezas(data || []);
@@ -1179,11 +1179,19 @@ export default function Revenda() {
   // ── Pagamento (transações) handlers ──
 
   const openPagamento = async (mov) => {
-    setPagamentoMov(mov);
-    const table =
-      mov._tipo === "entrada"
-        ? "revenda_entrada_transacoes"
-        : "revenda_saida_transacoes";
+    const isEnt = mov._tipo === "entrada";
+    const itensTable = isEnt
+      ? "revenda_mov_entradas_itens"
+      : "revenda_mov_saidas_itens";
+    const { data: fetchedItens } = await supabase
+      .from(itensTable)
+      .select("produto_id, quantidade, valor_compra_unitario" + (isEnt ? "" : ", valor_venda_unitario"))
+      .eq("mov_id", mov.id);
+    const movWithItens = { ...mov, itens: fetchedItens || [] };
+    setPagamentoMov(movWithItens);
+    const table = isEnt
+      ? "revenda_entrada_transacoes"
+      : "revenda_saida_transacoes";
     const { data } = await supabase
       .from(table)
       .select("*")
@@ -1193,14 +1201,9 @@ export default function Revenda() {
     const dinheiro = formasPagamento.find(
       (f) => f.nome.toLowerCase() === "dinheiro",
     );
-    const isEnt = mov._tipo === "entrada";
-    const totalMov = (mov.itens || []).reduce(
-      (s, i) =>
-        s +
-        (i.quantidade || 0) *
-          (isEnt ? i.valor_compra_unitario || 0 : i.valor_venda_unitario || 0),
-      0,
-    );
+    const totalMov = isEnt
+      ? Number(mov.total_compra || 0)
+      : Number(mov.total_venda || 0);
     const totalPago = (data || []).reduce((s, t) => s + Number(t.valor), 0);
     const restante = Math.max(0, totalMov - totalPago);
     setFormTransacao({
@@ -1246,13 +1249,9 @@ export default function Revenda() {
       (f) => f.nome.toLowerCase() === "dinheiro",
     );
     const isEnt2 = pagamentoMov._tipo === "entrada";
-    const totalMov2 = (pagamentoMov.itens || []).reduce(
-      (s, i) =>
-        s +
-        (i.quantidade || 0) *
-          (isEnt2 ? i.valor_compra_unitario || 0 : i.valor_venda_unitario || 0),
-      0,
-    );
+    const totalMov2 = isEnt2
+      ? Number(pagamentoMov.total_compra || 0)
+      : Number(pagamentoMov.total_venda || 0);
     const totalPago2 = (data || []).reduce((s, t) => s + Number(t.valor), 0);
     const restante2 = Math.max(0, totalMov2 - totalPago2);
     // Atualiza status_pagamento na saída
@@ -1296,10 +1295,7 @@ export default function Revenda() {
     setTransacoes(data || []);
     // Recalcula status_pagamento na saída
     if (pagamentoMov._tipo === "saida") {
-      const totalMov = (pagamentoMov.itens || []).reduce(
-        (s, i) => s + (i.quantidade || 0) * (i.valor_venda_unitario || 0),
-        0,
-      );
+      const totalMov = Number(pagamentoMov.total_venda || 0);
       const totalPago = (data || []).reduce((s, t) => s + Number(t.valor), 0);
       const newStatus =
         totalPago <= 0
@@ -1467,17 +1463,27 @@ export default function Revenda() {
     setModal("saida");
   };
 
-  const openEditMov = (m) => {
+  const openEditMov = async (m) => {
     setEditingMovId(m.id);
-    if (m._tipo === "entrada") {
+    const isEntrada = m._tipo === "entrada";
+    const table = isEntrada
+      ? "revenda_mov_entradas_itens"
+      : "revenda_mov_saidas_itens";
+    const { data: fetchedItens } = await supabase
+      .from(table)
+      .select("produto_id, quantidade, valor_compra_unitario" + (isEntrada ? "" : ", valor_venda_unitario"))
+      .eq("mov_id", m.id);
+    const itens = fetchedItens || [];
+
+    if (isEntrada) {
       setFormEntrada({
         data: m.data || today,
         fornecedor_id: m.fornecedor_id || "",
         nota_fiscal: m.nota_fiscal || "",
         observacao: m.observacao || "",
         itens:
-          (m.itens || []).length > 0
-            ? m.itens.map((i) => ({
+          itens.length > 0
+            ? itens.map((i) => ({
                 produto_id: i.produto_id || "",
                 quantidade: i.quantidade?.toString() || "",
                 valor_compra_unitario:
@@ -1492,8 +1498,8 @@ export default function Revenda() {
         pdv_id: m.pdv_id || "",
         observacao: m.observacao || "",
         itens:
-          (m.itens || []).length > 0
-            ? m.itens.map((i) => ({
+          itens.length > 0
+            ? itens.map((i) => ({
                 produto_id: i.produto_id || "",
                 quantidade: i.quantidade?.toString() || "",
                 valor_compra_unitario:
@@ -3153,15 +3159,9 @@ export default function Revenda() {
           (() => {
             const isEntrada = pagamentoMov._tipo === "entrada";
             const itens = pagamentoMov.itens || [];
-            const totalMov = itens.reduce(
-              (s, i) =>
-                s +
-                (i.quantidade || 0) *
-                  (isEntrada
-                    ? i.valor_compra_unitario || 0
-                    : i.valor_venda_unitario || 0),
-              0,
-            );
+            const totalMov = isEntrada
+              ? Number(pagamentoMov.total_compra || 0)
+              : Number(pagamentoMov.total_venda || 0);
             const totalPago = transacoes.reduce(
               (s, t) => s + Number(t.valor),
               0,
