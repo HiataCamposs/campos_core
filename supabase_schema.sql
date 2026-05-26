@@ -30,12 +30,32 @@ create table if not exists gelo_vendas (
   user_id uuid references auth.users(id)
 );
 
-create table if not exists gelo_despesas (
+create table if not exists gelo_custos (
   id uuid default gen_random_uuid() primary key,
   data date not null default current_date,
   descricao text not null,
   valor numeric(10,2) not null,
-  categoria text,                       -- energia | manutencao | insumo | outro
+  categoria text,                       -- energia | manutencao | limpeza_caixa | filtro | outro
+  quantidade numeric(10,2),
+  valor_unitario numeric(10,4),
+  percentual_fabrica numeric(5,2),
+  observacao text,
+  created_at timestamptz default now(),
+  deleted_at timestamptz,
+  user_id uuid references auth.users(id)
+);
+
+create table if not exists gelo_custo_embalagens (
+  id uuid default gen_random_uuid() primary key,
+  data date not null default current_date,
+  descricao text,
+  tamanho_saco numeric(4,1) not null,
+  alca boolean default false,
+  micras numeric(4,2),
+  quantidade numeric(10,2) not null,
+  valor numeric(10,2) not null,
+  frete numeric(10,2) default 0,
+  valor_unitario numeric(10,4),
   observacao text,
   created_at timestamptz default now(),
   deleted_at timestamptz,
@@ -190,7 +210,8 @@ create table if not exists agendamentos (
 
 alter table gelo_producao enable row level security;
 alter table gelo_vendas enable row level security;
-alter table gelo_despesas enable row level security;
+alter table gelo_custos enable row level security;
+alter table gelo_custo_embalagens enable row level security;
 alter table revenda_naturezas enable row level security;
 alter table revenda_atributos enable row level security;
 alter table revenda_fornecedores enable row level security;
@@ -204,7 +225,8 @@ alter table agendamentos enable row level security;
 -- Políticas: cada user vê apenas seus dados
 create policy "user_own_data" on gelo_producao for all using (auth.uid() = user_id);
 create policy "user_own_data" on gelo_vendas for all using (auth.uid() = user_id);
-create policy "user_own_data" on gelo_despesas for all using (auth.uid() = user_id);
+create policy "user_own_data" on gelo_custos for all using (auth.uid() = user_id);
+create policy "user_own_data" on gelo_custo_embalagens for all using (auth.uid() = user_id);
 create policy "user_own_data" on revenda_naturezas for all using (auth.uid() = user_id);
 create policy "user_own_data" on revenda_atributos for all using (auth.uid() = user_id);
 create policy "user_own_data" on revenda_fornecedores for all using (auth.uid() = user_id);

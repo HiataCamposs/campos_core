@@ -37,6 +37,7 @@ drop table if exists veiculos cascade;
 
 drop table if exists gelo_vendas cascade;
 drop table if exists gelo_producao cascade;
-drop table if exists gelo_despesas cascade;
+drop table if exists gelo_custos cascade;
+drop table if exists gelo_custo_embalagens cascade;
 
 drop table if exists agendamentos cascade;

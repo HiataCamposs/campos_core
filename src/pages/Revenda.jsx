@@ -35,6 +35,8 @@ const today = new Date().toLocaleDateString("sv-SE", {
 });
 
 // ── Helper: supabase mutation with error handling ──
+const cleanPhone = (val) => val.replace(/^\+55\s?/, "").replace(/[\s-]/g, "");
+
 const dbOp = async (query, label = "Operação") => {
   const res = await query;
   if (res.error) {
@@ -1185,7 +1187,10 @@ export default function Revenda() {
       : "revenda_mov_saidas_itens";
     const { data: fetchedItens } = await supabase
       .from(itensTable)
-      .select("produto_id, quantidade, valor_compra_unitario" + (isEnt ? "" : ", valor_venda_unitario"))
+      .select(
+        "produto_id, quantidade, valor_compra_unitario" +
+          (isEnt ? "" : ", valor_venda_unitario"),
+      )
       .eq("mov_id", mov.id);
     const movWithItens = { ...mov, itens: fetchedItens || [] };
     setPagamentoMov(movWithItens);
@@ -1471,7 +1476,10 @@ export default function Revenda() {
       : "revenda_mov_saidas_itens";
     const { data: fetchedItens } = await supabase
       .from(table)
-      .select("produto_id, quantidade, valor_compra_unitario" + (isEntrada ? "" : ", valor_venda_unitario"))
+      .select(
+        "produto_id, quantidade, valor_compra_unitario" +
+          (isEntrada ? "" : ", valor_venda_unitario"),
+      )
       .eq("mov_id", m.id);
     const itens = fetchedItens || [];
 
@@ -2338,7 +2346,10 @@ export default function Revenda() {
                     value={ct.telefone}
                     onChange={(e) => {
                       const next = [...formPdv.contatos];
-                      next[ci] = { ...ct, telefone: e.target.value };
+                      next[ci] = {
+                        ...ct,
+                        telefone: cleanPhone(e.target.value),
+                      };
                       setFormPdv({ ...formPdv, contatos: next });
                     }}
                     className="w-full rounded-lg border border-border-custom bg-bg px-2 py-2 text-sm min-w-0"
@@ -2504,7 +2515,10 @@ export default function Revenda() {
                     value={ct.telefone}
                     onChange={(e) => {
                       const next = [...formFornecedor.contatos];
-                      next[ci] = { ...ct, telefone: e.target.value };
+                      next[ci] = {
+                        ...ct,
+                        telefone: cleanPhone(e.target.value),
+                      };
                       setFormFornecedor({ ...formFornecedor, contatos: next });
                     }}
                     className="w-full rounded-lg border border-border-custom bg-bg px-2 py-2 text-sm min-w-0"

@@ -193,6 +193,11 @@ export default function Gerencial() {
     { label: "90d", days: 90 },
   ];
 
+  // Calcula dias do range atual
+  const rangeDays = Math.round(
+    (new Date(endDate) - new Date(startDate)) / (1000 * 60 * 60 * 24),
+  );
+
   return (
     <div className="space-y-4">
       {/* Date filter */}
@@ -203,33 +208,35 @@ export default function Gerencial() {
               type="date"
               value={startDate}
               onChange={(e) => setStartDate(e.target.value)}
-              className="rounded-lg border border-border-custom bg-bg px-2 py-1.5 text-sm"
+              className="rounded-lg border border-border-custom bg-bg px-2 py-1.5 text-sm w-[122px]"
             />
             <span className="text-text-disabled text-xs">até</span>
             <input
               type="date"
               value={endDate}
               onChange={(e) => setEndDate(e.target.value)}
-              className="rounded-lg border border-border-custom bg-bg px-2 py-1.5 text-sm"
+              className="rounded-lg border border-border-custom bg-bg px-2 py-1.5 text-sm w-[122px]"
             />
-          </div>
-          <div className="flex gap-1">
-            {presets.map((p) => (
-              <button
-                key={p.label}
-                onClick={() => {
-                  setStartDate(daysAgo(p.days));
+            <select
+              value={presets.some((p) => p.days === rangeDays) ? rangeDays : ""}
+              onChange={(e) => {
+                const days = Number(e.target.value);
+                if (days) {
+                  setStartDate(daysAgo(days));
                   setEndDate(today);
-                }}
-                className={`px-2 py-1 text-xs rounded-md font-medium transition-colors ${
-                  startDate === daysAgo(p.days) && endDate === today
-                    ? "bg-accent-500 text-white"
-                    : "bg-surface-alt text-text-secondary hover:text-text-primary"
-                }`}
-              >
-                {p.label}
-              </button>
-            ))}
+                }
+              }}
+              className="rounded-lg border border-border-custom bg-bg px-1.5 py-1.5 text-sm w-[60px]"
+            >
+              <option value="" disabled>
+                {rangeDays}d
+              </option>
+              {presets.map((p) => (
+                <option key={p.days} value={p.days}>
+                  {p.label}
+                </option>
+              ))}
+            </select>
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-2 mt-2">
@@ -438,16 +445,16 @@ export default function Gerencial() {
                 <table className="w-full text-[11px] mt-2">
                   <thead>
                     <tr className="bg-surface-alt text-[10px] text-text-disabled uppercase tracking-wider">
-                      <th className="text-left px-2 py-1.5 font-semibold">
+                      <th className="text-left px-1.5 py-1.5 font-semibold">
                         PDV
                       </th>
-                      <th className="text-right px-2 py-1.5 font-semibold whitespace-nowrap">
+                      <th className="text-right px-1.5 py-1.5 font-semibold whitespace-nowrap">
                         Faturamento
                       </th>
-                      <th className="text-right px-5 py-1.5 font-semibold whitespace-nowrap">
+                      <th className="text-right px-1.5 py-1.5 font-semibold whitespace-nowrap">
                         Lucro
                       </th>
-                      <th className="text-right px-2 py-1.5 font-semibold whitespace-nowrap">
+                      <th className="text-right px-1.5 py-1.5 font-semibold whitespace-nowrap">
                         Margem
                       </th>
                     </tr>
@@ -458,19 +465,19 @@ export default function Gerencial() {
                         key={i}
                         className="border-t border-border-custom hover:bg-surface-alt/50"
                       >
-                        <td className="px-2 py-1.5 font-medium text-text-primary whitespace-nowrap">
+                        <td className="px-1.5 py-1.5 font-medium text-text-primary whitespace-nowrap">
                           {p.nome}
                         </td>
-                        <td className="px-2 py-1.5 text-right text-text-secondary whitespace-nowrap">
+                        <td className="px-1.5 py-1.5 text-right text-text-secondary whitespace-nowrap">
                           {fmtMoney(p.faturamento)}
                         </td>
                         <td
-                          className={`px-2 py-1.5 text-right font-medium whitespace-nowrap ${p.lucro >= 0 ? "text-success" : "text-error"}`}
+                          className={`px-1.5 py-1.5 text-right font-medium whitespace-nowrap ${p.lucro >= 0 ? "text-success" : "text-error"}`}
                         >
                           {fmtMoney(p.lucro)}
                         </td>
                         <td
-                          className={`px-2 py-1.5 text-right whitespace-nowrap ${p.margem >= 20 ? "text-success" : p.margem >= 0 ? "text-warning" : "text-error"}`}
+                          className={`px-1.5 py-1.5 text-right whitespace-nowrap ${p.margem >= 20 ? "text-success" : p.margem >= 0 ? "text-warning" : "text-error"}`}
                         >
                           {fmtPct(p.margem)}
                         </td>

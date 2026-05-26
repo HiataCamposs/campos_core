@@ -64,7 +64,7 @@ export default function Dashboard() {
         .is("deleted_at", null)
         .eq("data", today),
       supabase
-        .from("gelo_despesas")
+        .from("gelo_custos")
         .select("descricao, categoria, estoque_atual")
         .is("deleted_at", null)
         .not("estoque_atual", "is", null),

@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from "react";
+﻿import { useEffect, useState, useCallback } from "react";
 import { supabase } from "../lib/supabaseClient";
 import { useAuth } from "../contexts/AuthContext";
 import { useBottomTabs } from "../contexts/BottomTabsContext";
@@ -13,16 +13,12 @@ import {
   Gauge,
   Pencil,
   Copy,
-  Filter,
   X,
-  History,
-  ArrowDownCircle,
-  ArrowUpCircle,
 } from "lucide-react";
 
 const TABS = [
   { key: "producao", label: "Produção", icon: Factory },
-  { key: "despesas", label: "Despesas", icon: Wallet },
+  { key: "custos", label: "Custos", icon: Wallet },
   { key: "consumo", label: "Consumo", icon: Gauge },
 ];
 
@@ -46,9 +42,8 @@ function FormProducao({ data, onChange, onSave, saving, funcionarios }) {
     const tamanho = parseInt(data.tamanho);
     if (!tamanho) return;
     supabase
-      .from("gelo_despesas")
+      .from("gelo_custo_embalagens")
       .select("valor_unitario")
-      .eq("categoria", "plastico")
       .eq("tamanho_saco", tamanho)
       .is("deleted_at", null)
       .order("data", { ascending: false })
@@ -159,9 +154,9 @@ function FormProducao({ data, onChange, onSave, saving, funcionarios }) {
   );
 }
 
-function FormDespesa({ data, onChange, onSave, saving }) {
+function FormCusto({ data, onChange, onSave, saving }) {
   const [copied, setCopied] = useState(false);
-  const isInsumo = data.categoria === "filtro" || data.categoria === "plastico";
+  const isInsumo = data.categoria === "filtro";
   const isConsumo = data.categoria === "energia" || data.categoria === "agua";
   const unidadeConsumo = data.categoria === "energia" ? "kWh" : "m³";
   const valorFabrica =
@@ -170,10 +165,7 @@ function FormDespesa({ data, onChange, onSave, saving }) {
       : 0;
   const valorUnit =
     data.valor && data.quantidade && Number(data.quantidade) > 0
-      ? (
-          (Number(data.valor) + (Number(data.frete) || 0)) /
-          Number(data.quantidade)
-        ).toFixed(2)
+      ? (Number(data.valor) / Number(data.quantidade)).toFixed(2)
       : null;
 
   return (
@@ -197,7 +189,6 @@ function FormDespesa({ data, onChange, onSave, saving }) {
             className="w-full rounded-lg border border-border-custom bg-bg px-3 py-2 text-sm"
           >
             <option value="filtro">Refil filtro</option>
-            <option value="plastico">Embalagem</option>
             <option value="energia">Conta de Energia</option>
             <option value="agua">Conta de Água</option>
             <option value="limpeza_caixa">Limpeza da Caixa</option>
@@ -216,11 +207,9 @@ function FormDespesa({ data, onChange, onSave, saving }) {
             onChange={(e) => onChange({ ...data, descricao: e.target.value })}
             className="w-full rounded-lg border border-border-custom bg-bg px-3 py-2 text-sm"
             placeholder={
-              data.categoria === "plastico"
-                ? "Ex: Saco 5kg, Bobina 10kg"
-                : data.categoria === "filtro"
-                  ? "Ex: Refil 10 polegadas"
-                  : "Descrição"
+              data.categoria === "filtro"
+                ? "Ex: Refil 10 polegadas"
+                : "Descrição"
             }
           />
         </div>
@@ -296,70 +285,8 @@ function FormDespesa({ data, onChange, onSave, saving }) {
           </div>
         </>
       )}
-      {data.categoria === "plastico" && (
-        <div className="grid grid-cols-3 gap-3">
-          <div>
-            <label className="block text-sm font-medium mb-1">Alça</label>
-            <select
-              value={data.alca ? "true" : "false"}
-              onChange={(e) =>
-                onChange({ ...data, alca: e.target.value === "true" })
-              }
-              className="w-full rounded-lg border border-border-custom bg-bg px-3 py-2 text-sm"
-            >
-              <option value="false">Não</option>
-              <option value="true">Sim</option>
-            </select>
-          </div>
-          <div>
-            <label className="block text-sm font-medium mb-1">Tamanho</label>
-            <select
-              value={data.tamanho_saco}
-              onChange={(e) =>
-                onChange({ ...data, tamanho_saco: Number(e.target.value) })
-              }
-              className="w-full rounded-lg border border-border-custom bg-bg px-3 py-2 text-sm"
-            >
-              <option value="3">3 kg</option>
-              <option value="3.5">3.5 kg</option>
-              <option value="4">4 kg</option>
-              <option value="5">5 kg</option>
-              <option value="10">10 kg</option>
-            </select>
-          </div>
-          <div>
-            <label className="block text-sm font-medium mb-1">Micras</label>
-            <select
-              value={data.micras}
-              onChange={(e) => onChange({ ...data, micras: e.target.value })}
-              className="w-full rounded-lg border border-border-custom bg-bg px-3 py-2 text-sm"
-            >
-              <option value="">—</option>
-              {Array.from({ length: 6 }, (_, i) =>
-                (0.12 + i * 0.01).toFixed(2),
-              ).map((v) => (
-                <option key={v} value={v}>
-                  {v}
-                </option>
-              ))}
-            </select>
-          </div>
-        </div>
-      )}
       {isConsumo ? null : isInsumo ? (
-        <div className="grid grid-cols-3 gap-3">
-          <div>
-            <label className="block text-sm font-medium mb-1">Frete (R$)</label>
-            <input
-              type="number"
-              step="0.01"
-              min="0"
-              value={data.frete}
-              onChange={(e) => onChange({ ...data, frete: e.target.value })}
-              className="w-full rounded-lg border border-border-custom bg-bg px-3 py-2 text-sm"
-              placeholder="0.00"
-            />
-          </div>
+        <div className="grid grid-cols-2 gap-3">
           <div>
             <label className="block text-sm font-medium mb-1">
               Valor total (R$)
@@ -586,7 +513,7 @@ const today = new Date().toLocaleDateString("sv-SE", {
 });
 const TABLE_MAP = {
   producao: "gelo_producao",
-  despesas: "gelo_despesas",
+  custos: "gelo_custos",
   consumo: "gelo_consumo",
 };
 
@@ -600,18 +527,8 @@ export default function Gelo() {
   const [editingId, setEditingId] = useState(null);
   const [deleteId, setDeleteId] = useState(null);
 
-  const [consumoResumo, setConsumoResumo] = useState(null);
-  const [logModal, setLogModal] = useState(null); // { itemId, itemName, logs }
-  const [movModal, setMovModal] = useState(null); // { itemId, itemName, estoque, editingLogId? }
-  const [movForm, setMovForm] = useState({
-    data: today,
-    quantidade: "",
-    acao: "saida",
-    observacao: "",
-  });
   const allCategorias = [
     "filtro",
-    "plastico",
     "energia",
     "agua",
     "limpeza_caixa",
@@ -621,7 +538,7 @@ export default function Gelo() {
   const [filtroCategoria, setFiltroCategoria] = useState(
     new Set(allCategorias),
   );
-  const [showFiltro, setShowFiltro] = useState(false);
+  const [custoSub, setCustoSub] = useState(null);
   const [saving, setSaving] = useState(false);
   const [funcionarios, setFuncionarios] = useState([]);
 
@@ -633,16 +550,12 @@ export default function Gelo() {
     funcionario: "",
     observacao: "",
   };
-  const emptyDespesa = {
+  const emptyCusto = {
     data: today,
     descricao: "",
     valor: "",
     quantidade: "",
-    frete: "",
     categoria: "filtro",
-    alca: false,
-    tamanho_saco: 5,
-    micras: "",
     observacao: "",
     // consumo fields (for energia/agua)
     consumo: "",
@@ -662,71 +575,33 @@ export default function Gelo() {
 
   const fetchData = useCallback(async () => {
     setLoading(true);
-    if (tab === "despesas") {
+    if (tab === "custos" && custoSub === "embalagens") {
       const { data } = await supabase
-        .from("gelo_despesas")
+        .from("gelo_custo_embalagens")
+        .select("*")
+        .is("deleted_at", null)
+        .order("data", { ascending: false })
+        .limit(50);
+      setItems(data || []);
+    } else if (tab === "custos") {
+      const { data } = await supabase
+        .from("gelo_custos")
         .select("*")
         .is("deleted_at", null)
         .order("data", { ascending: false })
         .limit(50);
       setItems(data || []);
     } else if (tab === "consumo") {
-      // Baixas: only filtro/plastico items with stock
+      // Baixas: only filtro items with stock
       const { data } = await supabase
-        .from("gelo_despesas")
+        .from("gelo_custos")
         .select("*")
         .is("deleted_at", null)
-        .in("categoria", ["filtro", "plastico"])
+        .eq("categoria", "filtro")
         .not("estoque_atual", "is", null)
         .gt("estoque_atual", 0)
         .order("data", { ascending: false });
       setItems(data || []);
-      // Fetch 7-day comparison: production vs consumption
-      const sevenDaysAgo = new Date();
-      sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 6);
-      const startDate = sevenDaysAgo.toLocaleDateString("sv-SE", {
-        timeZone: "America/Sao_Paulo",
-      });
-      const [{ data: prodDays }, { data: logsDays }] = await Promise.all([
-        supabase
-          .from("gelo_producao")
-          .select("quantidade, data")
-          .is("deleted_at", null)
-          .gte("data", startDate),
-        supabase
-          .from("gelo_consumo_lancamentos")
-          .select("quantidade, descricao, categoria, data")
-          .is("deleted_at", null)
-          .gte("data", startDate),
-      ]);
-      // Group by day
-      const days = [];
-      for (let i = 6; i >= 0; i--) {
-        const d = new Date();
-        d.setDate(d.getDate() - i);
-        const ds = d.toLocaleDateString("sv-SE", {
-          timeZone: "America/Sao_Paulo",
-        });
-        const prod = (prodDays || [])
-          .filter((p) => p.data === ds)
-          .reduce((s, p) => s + Number(p.quantidade || 0), 0);
-        const dayLogs = (logsDays || []).filter((l) => l.data === ds);
-        const consumo = dayLogs.reduce(
-          (s, l) => s + Math.abs(Math.min(0, Number(l.quantidade || 0))),
-          0,
-        );
-        days.push({
-          date: ds,
-          label: d
-            .toLocaleDateString("pt-BR", { weekday: "short" })
-            .replace(".", ""),
-          prod,
-          consumo,
-        });
-      }
-      // Today's logs for movement list
-      const logsHoje = (logsDays || []).filter((l) => l.data === today);
-      setConsumoResumo({ days, logs: logsHoje });
     } else {
       const { data } = await supabase
         .from(TABLE_MAP[tab])
@@ -750,7 +625,7 @@ export default function Gelo() {
       ];
       setFuncionarios(unique.sort());
     }
-  }, [tab]);
+  }, [tab, custoSub]);
 
   useEffect(() => {
     fetchData();
@@ -759,9 +634,9 @@ export default function Gelo() {
   useEffect(() => {
     if (tab === "producao") setForm(emptyProducao);
     else if (tab === "consumo") setForm(emptyConsumo);
-    else setForm(emptyDespesa);
+    else setForm(emptyCusto);
     setFiltroCategoria(new Set(allCategorias));
-    setShowFiltro(false);
+    setCustoSub(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab]);
 
@@ -772,7 +647,13 @@ export default function Gelo() {
         {TABS.map((t) => (
           <button
             key={t.key}
-            onClick={() => setTab(t.key)}
+            onClick={() => {
+              setTab(t.key);
+              if (t.key === "custos") {
+                setCustoSub(null);
+                setFiltroCategoria(new Set(allCategorias));
+              }
+            }}
             className={`flex flex-col items-center text-[10px] gap-0.5 ${tab === t.key ? "text-primary-500 font-semibold" : "text-text-secondary"}`}
           >
             <t.icon size={20} />
@@ -802,33 +683,28 @@ export default function Gelo() {
     // preco_pacote only exists on gelo_producao
     if (tab !== "producao") delete payload.preco_pacote;
     if (
-      tab === "despesas" &&
+      tab === "custos" &&
       payload.quantidade &&
       Number(payload.quantidade) > 0
     ) {
       payload.quantidade = Number(payload.quantidade);
-      const totalComFrete =
-        payload.valor + (payload.frete ? Number(payload.frete) : 0);
+      const totalComFrete = payload.valor;
       payload.valor_unitario = Number(
         (totalComFrete / payload.quantidade).toFixed(4),
       );
       if (!editingId) payload.estoque_atual = payload.quantidade;
-    } else if (tab === "despesas") {
+    } else if (tab === "custos") {
       payload.quantidade = null;
       payload.valor_unitario = null;
     }
-    if (tab === "despesas") {
-      payload.frete = payload.frete ? Number(payload.frete) : null;
-      payload.micras = payload.micras ? Number(payload.micras) : null;
-      if (payload.categoria === "plastico") {
-        // descricao comes from user input
-      } else {
-        payload.alca = null;
-        payload.tamanho_saco = null;
-        payload.micras = null;
-      }
+    if (tab === "custos") {
+      // Remove embalagem fields (now in gelo_custo_embalagens)
+      delete payload.alca;
+      delete payload.tamanho_saco;
+      delete payload.micras;
+      delete payload.frete;
     }
-    if (tab === "despesas" && isConsumoCateg) {
+    if (tab === "custos" && isConsumoCateg) {
       // Energia/Água: map form fields to DB columns
       const consumoVal = payload.consumo ? Number(payload.consumo) : null;
       const valorContaVal = payload.valor_conta
@@ -847,13 +723,8 @@ export default function Gelo() {
       // Remove form-only fields
       delete payload.consumo;
       delete payload.valor_conta;
-      // Clear insumo fields
-      payload.frete = null;
-      payload.alca = null;
-      payload.tamanho_saco = null;
-      payload.micras = null;
       payload.estoque_atual = null;
-    } else if (tab === "despesas") {
+    } else if (tab === "custos") {
       // Non-consumo: clear consumo-related fields
       delete payload.consumo;
       delete payload.valor_conta;
@@ -920,169 +791,6 @@ export default function Gelo() {
     fetchData();
   };
 
-  const handleMovSave = async (e) => {
-    e.preventDefault();
-    if (!movModal) return;
-    const qty = Number(movForm.quantidade);
-    if (!qty || qty <= 0) return;
-    const delta = movForm.acao === "saida" ? -qty : qty;
-    const item = items.find((i) => i.id === movModal.itemId);
-    if (!item || item.estoque_atual == null) return;
-
-    if (movModal.editingLogId) {
-      // Edit existing log
-      await saveLogEdit(
-        movModal.editingLogId,
-        delta,
-        movForm.observacao,
-        movForm.data,
-      );
-      setMovModal(null);
-      setMovForm({
-        data: today,
-        quantidade: "",
-        acao: "saida",
-        observacao: "",
-      });
-      return;
-    }
-
-    // Create new
-    const novoEstoque = Math.max(0, item.estoque_atual + delta);
-    const { ok: ok1 } = await dbOp(
-      supabase
-        .from("gelo_despesas")
-        .update({ estoque_atual: novoEstoque })
-        .eq("id", movModal.itemId),
-      "atualizar estoque",
-    );
-    if (!ok1) return;
-    const { ok: ok2 } = await dbOp(
-      supabase.from("gelo_consumo_lancamentos").insert({
-        despesa_id: movModal.itemId,
-        descricao: item.descricao || "",
-        categoria: item.categoria || "",
-        quantidade: delta,
-        valor_unitario: item.valor_unitario ?? null,
-        estoque_antes: item.estoque_atual,
-        estoque_depois: novoEstoque,
-        data: movForm.data,
-        observacao: movForm.observacao || null,
-        user_id: user.id,
-      }),
-      "registrar movimentação",
-    );
-    if (!ok2) return;
-    setItems((prev) =>
-      prev.map((i) =>
-        i.id === movModal.itemId ? { ...i, estoque_atual: novoEstoque } : i,
-      ),
-    );
-    setMovModal(null);
-    setMovForm({ data: today, quantidade: "", acao: "saida", observacao: "" });
-    fetchData();
-  };
-
-  const openLogHistory = async (item) => {
-    const { data: logs } = await supabase
-      .from("gelo_consumo_lancamentos")
-      .select("*")
-      .eq("despesa_id", item.id)
-      .is("deleted_at", null)
-      .order("data", { ascending: false })
-      .limit(50);
-    setLogModal({
-      itemId: item.id,
-      itemName: item.descricao,
-      logs: logs || [],
-    });
-  };
-
-  const deleteLog = async (logId) => {
-    const log = logModal.logs.find((l) => l.id === logId);
-    if (!log) return;
-    // Reverse the stock effect
-    const item = items.find((i) => i.id === logModal.itemId);
-    if (item) {
-      const revertedStock = item.estoque_atual - Number(log.quantidade);
-      await dbOp(
-        supabase
-          .from("gelo_despesas")
-          .update({ estoque_atual: revertedStock })
-          .eq("id", logModal.itemId),
-        "reverter estoque",
-      );
-      setItems((prev) =>
-        prev.map((i) =>
-          i.id === logModal.itemId ? { ...i, estoque_atual: revertedStock } : i,
-        ),
-      );
-    }
-    await dbOp(
-      supabase
-        .from("gelo_consumo_lancamentos")
-        .update({ deleted_at: new Date().toISOString() })
-        .eq("id", logId),
-      "remover lançamento",
-    );
-    setLogModal((prev) => ({
-      ...prev,
-      logs: prev.logs.filter((l) => l.id !== logId),
-    }));
-    fetchData();
-  };
-
-  const saveLogEdit = async (logId, newDelta, newObs, newDate) => {
-    const log = logModal.logs.find((l) => l.id === logId);
-    if (!log) return;
-    const oldDelta = Number(log.quantidade);
-    const diff = newDelta - oldDelta;
-    const item = items.find((i) => i.id === logModal.itemId);
-    if (item) {
-      const novoEstoque = Math.max(0, item.estoque_atual + diff);
-      await dbOp(
-        supabase
-          .from("gelo_despesas")
-          .update({ estoque_atual: novoEstoque })
-          .eq("id", logModal.itemId),
-        "atualizar estoque",
-      );
-      setItems((prev) =>
-        prev.map((i) =>
-          i.id === logModal.itemId ? { ...i, estoque_atual: novoEstoque } : i,
-        ),
-      );
-      const updatePayload = {
-        quantidade: newDelta,
-        estoque_depois: Number(log.estoque_antes) + newDelta,
-        observacao: newObs || null,
-      };
-      if (newDate) updatePayload.data = newDate;
-      await dbOp(
-        supabase
-          .from("gelo_consumo_lancamentos")
-          .update(updatePayload)
-          .eq("id", logId),
-        "editar lançamento",
-      );
-      setLogModal((prev) => ({
-        ...prev,
-        logs: prev.logs.map((l) =>
-          l.id === logId
-            ? {
-                ...l,
-                quantidade: newDelta,
-                estoque_depois: Number(log.estoque_antes) + newDelta,
-                observacao: newObs || null,
-                ...(newDate ? { data: newDate } : {}),
-              }
-            : l,
-        ),
-      }));
-    }
-    fetchData();
-  };
-
   const fmtMoney = (v) => (v != null ? `R$ ${Number(v).toFixed(2)}` : "—");
   const fmtDate = (d) =>
     d ? new Date(d + "T00:00:00").toLocaleDateString("pt-BR") : "—";
@@ -1096,12 +804,12 @@ export default function Gelo() {
             Fábrica de Gelo
           </h1>
         </div>
-        {tab !== "consumo" && (
+        {tab !== "consumo" && !(tab === "custos" && !custoSub) && (
           <button
             onClick={() => {
               setEditingId(null);
               if (tab === "producao") setForm(emptyProducao);
-              else setForm(emptyDespesa);
+              else setForm(emptyCusto);
               setModal("add");
             }}
             className="flex items-center gap-1.5 bg-primary-500 hover:bg-primary-600 text-white text-sm font-medium rounded-lg px-3 py-2 transition-colors"
@@ -1116,7 +824,13 @@ export default function Gelo() {
         {TABS.map((t) => (
           <button
             key={t.key}
-            onClick={() => setTab(t.key)}
+            onClick={() => {
+              setTab(t.key);
+              if (t.key === "custos") {
+                setCustoSub(null);
+                setFiltroCategoria(new Set(allCategorias));
+              }
+            }}
             className={`flex-1 flex items-center justify-center gap-1.5 text-sm font-medium rounded-lg py-2 transition-colors ${tab === t.key ? "bg-surface text-primary-500 shadow-sm" : "text-text-secondary hover:text-text-primary"}`}
           >
             <t.icon size={15} />
@@ -1125,189 +839,61 @@ export default function Gelo() {
         ))}
       </div>
 
-      {/* Filtro por categoria (despesas) */}
-      {tab === "despesas" && (
-        <div className="relative">
-          <button
-            onClick={() => setShowFiltro((p) => !p)}
-            className={`flex items-center gap-1.5 text-sm font-medium rounded-lg px-3 py-2 transition-colors border ${
-              filtroCategoria.size < allCategorias.length
-                ? "border-primary-500 bg-primary-50 text-primary-500"
-                : "border-border-custom bg-surface text-text-secondary hover:text-text-primary"
-            }`}
-          >
-            <Filter size={15} />
-            Filtrar
-            {filtroCategoria.size < allCategorias.length && (
-              <span className="bg-primary-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">
-                {filtroCategoria.size}
+      {/* Sub-abas custos */}
+      {tab === "custos" && !custoSub && (
+        <div className="grid grid-cols-2 gap-3">
+          {[
+            {
+              key: "embalagens",
+              label: "Embalagens",
+              desc: "Sacos de gelo",
+              icon: "📦",
+              categs: ["plastico"],
+            },
+            {
+              key: "servicos",
+              label: "Serviços",
+              desc: "Água, Luz",
+              icon: "⚡",
+              categs: ["energia", "agua"],
+            },
+            {
+              key: "manutencao",
+              label: "Manutenção",
+              desc: "Limpeza, filtros, reparos",
+              icon: "🔧",
+              categs: ["limpeza_caixa", "filtro", "manutencao"],
+            },
+            {
+              key: "outros",
+              label: "Outros",
+              desc: "Custos diversos",
+              icon: "📋",
+              categs: ["outro"],
+            },
+          ].map((g) => (
+            <button
+              key={g.key}
+              onClick={() => {
+                setCustoSub(g.key);
+                setFiltroCategoria(new Set(g.categs));
+              }}
+              className="flex flex-col items-center gap-1.5 bg-surface rounded-xl border border-border-custom p-4 hover:border-primary-500/50 hover:bg-primary-50/30 transition-colors"
+            >
+              <span className="text-2xl">{g.icon}</span>
+              <span className="text-sm font-semibold text-text-primary">
+                {g.label}
               </span>
-            )}
-          </button>
-          {showFiltro && (
-            <>
-              <div
-                className="fixed inset-0 z-40"
-                onClick={() => setShowFiltro(false)}
-              />
-              <div className="absolute left-0 top-full mt-1 z-50 bg-surface border border-border-custom rounded-xl shadow-lg p-2 min-w-[200px]">
-                <div className="flex items-center justify-between px-2 pb-2 mb-1 border-b border-border-custom">
-                  <span className="text-xs font-semibold text-text-secondary">
-                    Categorias
-                  </span>
-                  <button
-                    onClick={() => {
-                      if (filtroCategoria.size === allCategorias.length)
-                        setFiltroCategoria(new Set());
-                      else setFiltroCategoria(new Set(allCategorias));
-                    }}
-                    className="text-xs text-primary-500 font-medium hover:underline"
-                  >
-                    {filtroCategoria.size === allCategorias.length
-                      ? "Desmarcar todos"
-                      : "Marcar todos"}
-                  </button>
-                </div>
-                {[
-                  { key: "filtro", label: "Filtro" },
-                  { key: "plastico", label: "Embalagem" },
-                  { key: "energia", label: "Conta de Energia" },
-                  { key: "agua", label: "Conta de Água" },
-                  { key: "limpeza_caixa", label: "Limpeza da Caixa" },
-                  { key: "manutencao", label: "Manutenção" },
-                  { key: "outro", label: "Outro" },
-                ].map((c) => (
-                  <label
-                    key={c.key}
-                    className="flex items-center gap-2.5 px-2 py-1.5 rounded-lg hover:bg-surface-alt cursor-pointer transition-colors"
-                  >
-                    <input
-                      type="checkbox"
-                      checked={filtroCategoria.has(c.key)}
-                      onChange={() => {
-                        setFiltroCategoria((prev) => {
-                          const next = new Set(prev);
-                          if (next.has(c.key)) next.delete(c.key);
-                          else next.add(c.key);
-                          return next;
-                        });
-                      }}
-                      className="w-4 h-4 rounded border-border-custom text-primary-500 accent-primary-500"
-                    />
-                    <span className="text-sm">{c.label}</span>
-                  </label>
-                ))}
-              </div>
-            </>
-          )}
+              <span className="text-[11px] text-text-secondary text-center">
+                {g.desc}
+              </span>
+            </button>
+          ))}
         </div>
       )}
 
-      {/* Gráfico produção vs consumo (Consumo tab) */}
-      {tab === "consumo" &&
-        consumoResumo &&
-        (() => {
-          const { days, logs } = consumoResumo;
-          const maxVal = Math.max(
-            ...days.map((d) => Math.max(d.prod, d.consumo)),
-            1,
-          );
-          const isToday = (ds) => ds === today;
-          return (
-            <div className="bg-surface rounded-2xl border border-border-custom p-4 space-y-3">
-              <div className="flex items-center justify-between">
-                <h3 className="text-sm font-semibold text-text-primary">
-                  Produção vs Consumo · 7 dias
-                </h3>
-                <div className="flex items-center gap-3 text-[10px]">
-                  <span className="flex items-center gap-1">
-                    <span className="w-2.5 h-2.5 rounded-sm bg-sky-400/60" />{" "}
-                    Produção
-                  </span>
-                  <span className="flex items-center gap-1">
-                    <span className="w-2.5 h-2.5 rounded-sm bg-orange-500/70" />{" "}
-                    Consumo
-                  </span>
-                </div>
-              </div>
-              <div className="flex items-end gap-1.5" style={{ height: 120 }}>
-                {days.map((d) => (
-                  <div
-                    key={d.date}
-                    className="flex-1 flex flex-col items-center gap-1"
-                  >
-                    <div
-                      className="relative w-full flex justify-center"
-                      style={{ height: 90 }}
-                    >
-                      {/* Produção bar (background, behind) */}
-                      <div
-                        className={`absolute bottom-0 w-full rounded-t-md ${isToday(d.date) ? "bg-sky-400/70" : "bg-sky-400/40"}`}
-                        style={{
-                          height: `${(d.prod / maxVal) * 100}%`,
-                          minHeight: d.prod > 0 ? 4 : 0,
-                        }}
-                      />
-                      {/* Consumo bar (foreground, same width, on top) */}
-                      <div
-                        className={`absolute bottom-0 w-full rounded-t-md ${isToday(d.date) ? "bg-orange-500/70" : "bg-orange-500/40"}`}
-                        style={{
-                          height: `${(d.consumo / maxVal) * 100}%`,
-                          minHeight: d.consumo > 0 ? 4 : 0,
-                        }}
-                      />
-                      {/* Values on top */}
-                      {(d.prod > 0 || d.consumo > 0) && (
-                        <div className="absolute -top-4 text-[9px] font-medium text-text-secondary whitespace-nowrap">
-                          {d.prod > 0 && (
-                            <span className="text-sky-500">{d.prod}</span>
-                          )}
-                          {d.prod > 0 && d.consumo > 0 && <span> / </span>}
-                          {d.consumo > 0 && (
-                            <span className="text-orange-500">{d.consumo}</span>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                    <span
-                      className={`text-[10px] capitalize ${isToday(d.date) ? "font-bold text-text-primary" : "text-text-disabled"}`}
-                    >
-                      {isToday(d.date) ? "hoje" : d.label}
-                    </span>
-                  </div>
-                ))}
-              </div>
-              {logs.length > 0 && (
-                <div className="border-t border-border-custom pt-2">
-                  <p className="text-xs font-medium text-text-secondary mb-1">
-                    Movimentações de hoje
-                  </p>
-                  <div className="space-y-1">
-                    {logs.map((l, i) => (
-                      <div
-                        key={i}
-                        className="flex items-center justify-between text-xs"
-                      >
-                        <span className="text-text-primary truncate">
-                          {l.descricao}
-                        </span>
-                        <span
-                          className={`font-medium shrink-0 ml-2 ${Number(l.quantidade) < 0 ? "text-error" : "text-green-600"}`}
-                        >
-                          {Number(l.quantidade) < 0 ? "" : "+"}
-                          {l.quantidade}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-          );
-        })()}
-
       {/* Lista */}
-      {loading ? (
+      {tab === "custos" && !custoSub ? null : loading ? (
         <div className="flex justify-center py-12">
           <div className="animate-spin h-8 w-8 border-3 border-primary-500 border-t-transparent rounded-full" />
         </div>
@@ -1318,7 +904,9 @@ export default function Gelo() {
       ) : (
         (() => {
           const filtered =
-            tab === "despesas" && filtroCategoria.size < allCategorias.length
+            tab === "custos" &&
+            custoSub !== "embalagens" &&
+            filtroCategoria.size < allCategorias.length
               ? items.filter((i) => filtroCategoria.has(i.categoria))
               : items;
           return filtered.length === 0 ? (
@@ -1345,7 +933,7 @@ export default function Gelo() {
                             {item.quantidade} sacos {item.tamanho}kg
                           </span>
                         )}
-                        {(tab === "despesas" || tab === "consumo") && (
+                        {(tab === "custos" || tab === "consumo") && (
                           <span className="font-semibold truncate">
                             {item.categoria === "limpeza_caixa"
                               ? "Limpeza da Caixa"
@@ -1360,7 +948,7 @@ export default function Gelo() {
                           </span>
                         )}
                       </div>
-                      {tab === "despesas" &&
+                      {tab === "custos" &&
                         (item.categoria === "energia" ||
                           item.categoria === "agua") && (
                           <p className="text-xs text-text-disabled mt-0.5">
@@ -1379,28 +967,8 @@ export default function Gelo() {
                             )}
                           </p>
                         )}
-                      {tab === "despesas" && item.categoria === "plastico" && (
-                        <p className="text-xs text-text-disabled mt-0.5">
-                          {item.valor_unitario != null && (
-                            <>
-                              <span className="font-semibold text-primary-500">
-                                R${" "}
-                                {Number(item.valor_unitario)
-                                  .toFixed(2)
-                                  .replace(".", ",")}
-                                /un
-                              </span>
-                              {" · "}
-                            </>
-                          )}
-                          {item.tamanho_saco && <>{item.tamanho_saco}kg</>}
-                          {item.tamanho_saco && <> · </>}
-                          {item.alca ? "C/ Alça" : "S/ Alça"}
-                          {item.micras && <> · {item.micras} µm</>}
-                        </p>
-                      )}
-                      {tab === "despesas" &&
-                        item.categoria !== "plastico" &&
+
+                      {tab === "custos" &&
                         item._table !== "gelo_consumo" &&
                         item.categoria === "limpeza_caixa" && (
                           <p className="text-xs text-text-disabled mt-0.5">
@@ -1410,8 +978,7 @@ export default function Gelo() {
                             {item.descricao && <> · {item.descricao}</>}
                           </p>
                         )}
-                      {tab === "despesas" &&
-                        item.categoria !== "plastico" &&
+                      {tab === "custos" &&
                         item.categoria !== "energia" &&
                         item.categoria !== "agua" &&
                         item._table !== "gelo_consumo" &&
@@ -1427,7 +994,7 @@ export default function Gelo() {
                             </span>
                           </p>
                         )}
-                      {tab !== "despesas" &&
+                      {tab !== "custos" &&
                         tab !== "consumo" &&
                         (item.observacao || item.funcionario) && (
                           <p className="text-xs text-text-disabled mt-0.5 truncate">
@@ -1436,13 +1003,6 @@ export default function Gelo() {
                             {item.observacao}
                           </p>
                         )}
-                      {tab === "consumo" && item.categoria === "plastico" && (
-                        <p className="text-xs text-text-disabled mt-0.5">
-                          {item.tamanho_saco && <>{item.tamanho_saco}kg</>}
-                          {item.alca ? " · C/ Alça" : " · S/ Alça"}
-                          {item.micras && <> · {item.micras} µm</>}
-                        </p>
-                      )}
                     </div>
                     <div
                       className={`flex items-center gap-0.5 ml-2 shrink-0 ${tab === "consumo" ? "hidden" : ""}`}
@@ -1459,7 +1019,7 @@ export default function Gelo() {
                               funcionario: item.funcionario || "",
                               observacao: item.observacao || "",
                             });
-                          } else if (tab === "despesas") {
+                          } else if (tab === "custos") {
                             const isConsumoItem =
                               item.categoria === "energia" ||
                               item.categoria === "agua";
@@ -1470,11 +1030,7 @@ export default function Gelo() {
                               quantidade: isConsumoItem
                                 ? ""
                                 : (item.quantidade ?? ""),
-                              frete: item.frete ?? "",
                               categoria: item.categoria || "filtro",
-                              alca: item.alca ?? false,
-                              tamanho_saco: item.tamanho_saco ?? 5,
-                              micras: item.micras ?? "",
                               observacao: item.observacao || "",
                               consumo: isConsumoItem
                                 ? (item.quantidade ?? "")
@@ -1513,44 +1069,6 @@ export default function Gelo() {
                       </button>
                     </div>
                   </div>
-                  {/* Estoque row */}
-                  {tab === "consumo" && item.estoque_atual != null && (
-                    <div className="mt-1.5 flex items-center justify-between">
-                      <span
-                        className={`text-xs font-medium ${item.estoque_atual <= 0 ? "text-error" : "text-text-secondary"}`}
-                      >
-                        Estoque: {item.estoque_atual}
-                      </span>
-                      <div className="flex items-center gap-1">
-                        <button
-                          onClick={() => {
-                            setMovModal({
-                              itemId: item.id,
-                              itemName: item.descricao,
-                              estoque: item.estoque_atual,
-                            });
-                            setMovForm({
-                              data: today,
-                              quantidade: "",
-                              acao: "saida",
-                              observacao: "",
-                            });
-                          }}
-                          className="p-1.5 rounded-lg hover:bg-primary-50 text-text-disabled hover:text-primary-500 transition-colors"
-                          title="Nova movimentação"
-                        >
-                          <Plus size={14} />
-                        </button>
-                        <button
-                          onClick={() => openLogHistory(item)}
-                          className="p-1.5 rounded-lg hover:bg-surface-alt text-text-disabled hover:text-accent-500 transition-colors"
-                          title="Histórico"
-                        >
-                          <History size={14} />
-                        </button>
-                      </div>
-                    </div>
-                  )}
                 </div>
               ))}
             </div>
@@ -1568,12 +1086,12 @@ export default function Gelo() {
               ? "Editar Produção"
               : tab === "consumo"
                 ? "Editar Consumo"
-                : "Editar Despesa"
+                : "Editar Custo"
             : tab === "producao"
               ? "Nova Produção"
               : tab === "consumo"
                 ? "Novo Consumo"
-                : "Nova Despesa"
+                : "Novo Custo"
         }
       >
         {tab === "producao" && (
@@ -1585,8 +1103,8 @@ export default function Gelo() {
             funcionarios={funcionarios}
           />
         )}
-        {tab === "despesas" && (
-          <FormDespesa
+        {tab === "custos" && (
+          <FormCusto
             data={form}
             onChange={setForm}
             onSave={handleSave}
@@ -1614,216 +1132,6 @@ export default function Gelo() {
           onConfirm={handleDelete}
           onCancel={() => setModal(null)}
         />
-      </Modal>
-
-      {/* Modal Nova Movimentação */}
-      <Modal
-        open={!!movModal}
-        onClose={() => setMovModal(null)}
-        title={`${movModal?.editingLogId ? "Editar" : "Nova"} Movimentação · ${movModal?.itemName || ""}`}
-      >
-        {movModal && (
-          <form onSubmit={handleMovSave} className="space-y-4">
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block text-sm font-medium mb-1">Data</label>
-                <input
-                  type="date"
-                  value={movForm.data}
-                  onChange={(e) =>
-                    setMovForm({ ...movForm, data: e.target.value })
-                  }
-                  className="w-full rounded-lg border border-border-custom bg-bg px-3 py-2 text-sm"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-1">
-                  Quantidade
-                </label>
-                <input
-                  type="number"
-                  required
-                  min="1"
-                  value={movForm.quantidade}
-                  onChange={(e) =>
-                    setMovForm({ ...movForm, quantidade: e.target.value })
-                  }
-                  className="w-full rounded-lg border border-border-custom bg-bg px-3 py-2 text-sm"
-                  placeholder="0"
-                />
-              </div>
-            </div>
-            <div>
-              <div className="flex items-center justify-between mb-1">
-                <label className="text-sm font-medium">Ação</label>
-                <p className="text-xs text-text-disabled">
-                  Estoque:{" "}
-                  <span className="font-medium">{movModal.estoque}</span>
-                  {movForm.quantidade && (
-                    <>
-                      {" → "}
-                      <span
-                        className={`font-medium ${movForm.acao === "saida" ? "text-error" : "text-green-600"}`}
-                      >
-                        {Math.max(
-                          0,
-                          movModal.estoque +
-                            (movForm.acao === "saida"
-                              ? -Number(movForm.quantidade)
-                              : Number(movForm.quantidade)),
-                        )}
-                      </span>
-                    </>
-                  )}
-                </p>
-              </div>
-              <div className="grid grid-cols-2 gap-2">
-                <button
-                  type="button"
-                  onClick={() => setMovForm({ ...movForm, acao: "saida" })}
-                  className={`flex items-center justify-center gap-1.5 rounded-lg py-2.5 text-sm font-medium transition-colors ${
-                    movForm.acao === "saida"
-                      ? "bg-error/10 text-error border-2 border-error"
-                      : "bg-surface-alt text-text-secondary border border-border-custom"
-                  }`}
-                >
-                  <ArrowUpCircle size={16} /> Saída
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setMovForm({ ...movForm, acao: "entrada" })}
-                  className={`flex items-center justify-center gap-1.5 rounded-lg py-2.5 text-sm font-medium transition-colors ${
-                    movForm.acao === "entrada"
-                      ? "bg-green-500/10 text-green-600 border-2 border-green-500"
-                      : "bg-surface-alt text-text-secondary border border-border-custom"
-                  }`}
-                >
-                  <ArrowDownCircle size={16} /> Entrada
-                </button>
-              </div>
-            </div>
-            <div>
-              <label className="block text-sm font-medium mb-1">
-                Observação
-              </label>
-              <input
-                type="text"
-                value={movForm.observacao}
-                onChange={(e) =>
-                  setMovForm({ ...movForm, observacao: e.target.value })
-                }
-                className="w-full rounded-lg border border-border-custom bg-bg px-3 py-2 text-sm"
-                placeholder="Opcional"
-              />
-            </div>
-            <button
-              type="submit"
-              className="w-full bg-primary-500 hover:bg-primary-600 text-white font-medium rounded-lg py-2.5 transition-colors"
-            >
-              Salvar
-            </button>
-          </form>
-        )}
-      </Modal>
-
-      {/* Modal Histórico de Movimentações */}
-      <Modal
-        open={!!logModal}
-        onClose={() => {
-          setLogModal(null);
-        }}
-        title={`Histórico · ${logModal?.itemName || ""}`}
-      >
-        {logModal && (
-          <div className="space-y-2 max-h-[60vh] overflow-y-auto">
-            {logModal.logs.length === 0 ? (
-              <p className="text-sm text-text-secondary text-center py-4">
-                Nenhuma movimentação registrada.
-              </p>
-            ) : (
-              logModal.logs.map((log) => (
-                <div
-                  key={log.id}
-                  className="bg-surface-alt rounded-lg px-3 py-2"
-                >
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 text-sm">
-                        <span
-                          className={`font-semibold ${Number(log.quantidade) < 0 ? "text-error" : "text-green-600"}`}
-                        >
-                          {Number(log.quantidade) < 0 ? "" : "+"}
-                          {log.quantidade}
-                        </span>
-                        <span className="text-text-disabled text-xs">
-                          {log.estoque_antes} → {log.estoque_depois}
-                        </span>
-                      </div>
-                      <p className="text-[10px] text-text-disabled mt-0.5">
-                        {log.data
-                          ? new Date(log.data + "T00:00:00").toLocaleDateString(
-                              "pt-BR",
-                            )
-                          : "—"}
-                        {log.observacao && <> · {log.observacao}</>}
-                        {log.valor_unitario != null && (
-                          <>
-                            {" "}
-                            · R${" "}
-                            {Number(log.valor_unitario)
-                              .toFixed(2)
-                              .replace(".", ",")}
-                            /un
-                          </>
-                        )}
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-0.5 shrink-0">
-                      <button
-                        onClick={() => {
-                          setMovModal({
-                            itemId: logModal.itemId,
-                            itemName: logModal.itemName,
-                            estoque:
-                              items.find((i) => i.id === logModal.itemId)
-                                ?.estoque_atual ?? 0,
-                            editingLogId: log.id,
-                          });
-                          setMovForm({
-                            data: log.data || today,
-                            quantidade: String(
-                              Math.abs(Number(log.quantidade)),
-                            ),
-                            acao:
-                              Number(log.quantidade) < 0 ? "saida" : "entrada",
-                            observacao: log.observacao || "",
-                          });
-                        }}
-                        className="p-1.5 rounded-lg hover:bg-surface text-text-disabled hover:text-primary-500 transition-colors"
-                      >
-                        <Pencil size={13} />
-                      </button>
-                      <button
-                        onClick={() => {
-                          if (
-                            confirm(
-                              "Excluir esta movimentação e reverter o estoque?",
-                            )
-                          ) {
-                            deleteLog(log.id);
-                          }
-                        }}
-                        className="p-1.5 rounded-lg hover:bg-error/10 text-text-disabled hover:text-error transition-colors"
-                      >
-                        <Trash2 size={13} />
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              ))
-            )}
-          </div>
-        )}
       </Modal>
     </div>
   );

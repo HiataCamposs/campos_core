@@ -263,18 +263,12 @@ function PdvCard({ pdv, onContact }) {
                 </a>
                 <a
                   href={`tel:${pdv.contato.replace(/\D/g, "")}`}
-                  className="flex items-center justify-center gap-1.5 bg-sky-500/10 text-sky-600 text-xs font-medium rounded-lg py-2 px-4 hover:bg-sky-500/20 transition-colors"
+                  className="flex-1 flex items-center justify-center gap-1.5 bg-sky-500/10 text-sky-600 text-xs font-medium rounded-lg py-2 hover:bg-sky-500/20 transition-colors"
                 >
                   <Phone size={14} /> Ligar
                 </a>
               </>
             )}
-            <button
-              onClick={() => onContact(pdv)}
-              className="flex items-center justify-center gap-1.5 bg-primary-50 text-primary-500 text-xs font-medium rounded-lg py-2 px-4 hover:bg-primary-100 transition-colors"
-            >
-              <CalendarClock size={14} /> Agendar
-            </button>
           </div>
         </div>
       )}

@@ -144,7 +144,7 @@ export default function Agendamentos() {
   }, [weekOffset]);
 
   const weekDays = useMemo(() => {
-    return Array.from({ length: 6 }, (_, i) => {
+    return Array.from({ length: 7 }, (_, i) => {
       const d = addDays(windowStart, i);
       return {
         date: fmtISO(d),
