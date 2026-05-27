@@ -18,7 +18,11 @@ import {
   Users,
   Zap,
   SlidersHorizontal,
+  BotMessageSquare,
+  Send,
+  X,
 } from "lucide-react";
+import Modal from "../components/Modal";
 
 const today = new Date().toISOString().slice(0, 10);
 const MS_PER_DAY = 86400000;
@@ -83,7 +87,7 @@ function riskLabel(score) {
 }
 
 // ── PDV Analytics Card ──
-function PdvCard({ pdv, onContact }) {
+function PdvCard({ pdv, onContact, produtos }) {
   const [open, setOpen] = useState(false);
   const risk = riskLabel(pdv.riskScore);
   const RiskIcon = risk.icon;
@@ -143,7 +147,7 @@ function PdvCard({ pdv, onContact }) {
                 {pdv.avgInterval > 0 && (
                   <> · ciclo ~{Math.round(pdv.avgInterval)}d</>
                 )}
-                {pdv.totalQty > 0 && <> · {pdv.totalQty} un total</>}
+                {pdv.totalKg > 0 && <> · {pdv.totalKg.toFixed(0)} kg</>}
               </>
             )}
           </p>
@@ -187,11 +191,17 @@ function PdvCard({ pdv, onContact }) {
               </p>
             </div>
             <div className="bg-surface-alt rounded-lg p-2.5">
+              <p className="text-[10px] text-text-disabled mb-0.5">Total kg</p>
+              <p className="text-sm font-semibold">
+                {pdv.totalKg > 0 ? `${pdv.totalKg.toFixed(1)} kg` : "—"}
+              </p>
+            </div>
+            <div className="bg-surface-alt rounded-lg p-2.5">
               <p className="text-[10px] text-text-disabled mb-0.5">
-                Qtd média/compra
+                Kg médio/compra
               </p>
               <p className="text-sm font-semibold">
-                {pdv.avgQty > 0 ? `${Math.round(pdv.avgQty)} un` : "—"}
+                {pdv.avgKg > 0 ? `${pdv.avgKg.toFixed(1)} kg` : "—"}
               </p>
             </div>
             <div className="bg-surface-alt rounded-lg p-2.5">
@@ -199,16 +209,6 @@ function PdvCard({ pdv, onContact }) {
                 Total compras
               </p>
               <p className="text-sm font-semibold">{pdv.purchaseCount}</p>
-            </div>
-            <div className="bg-surface-alt rounded-lg p-2.5">
-              <p className="text-[10px] text-text-disabled mb-0.5">
-                Ticket médio
-              </p>
-              <p className="text-sm font-semibold">
-                {pdv.avgTicket > 0
-                  ? `R$ ${pdv.avgTicket.toFixed(2).replace(".", ",")}`
-                  : "—"}
-              </p>
             </div>
             <div className="bg-surface-alt rounded-lg p-2.5">
               <p className="text-[10px] text-text-disabled mb-0.5">
@@ -238,7 +238,16 @@ function PdvCard({ pdv, onContact }) {
                       {fmtDate(s.data)}
                     </span>
                     <span className="text-text-primary font-medium">
-                      {s.quantidade}x · R${" "}
+                      {(() => {
+                        const prod = produtos.find(
+                          (p) => p.id === s.produto_id,
+                        );
+                        const kg =
+                          (prod?.tamanho ? Number(prod.tamanho) : 0) *
+                          s.quantidade;
+                        return kg > 0 ? `${kg} kg` : `${s.quantidade}x`;
+                      })()}
+                      {" · R$ "}
                       {((s.valor_venda_unitario || 0) * s.quantidade)
                         .toFixed(2)
                         .replace(".", ",")}
@@ -288,6 +297,10 @@ export default function Reposicao({ embedded = false }) {
   const [filtroNatureza, setFiltroNatureza] = useState("Gelo");
   const [showFiltros, setShowFiltros] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
+  const [aiModal, setAiModal] = useState(false);
+  const [aiMessages, setAiMessages] = useState([]);
+  const [aiInput, setAiInput] = useState("");
+  const [aiLoading, setAiLoading] = useState(false);
 
   // Bottom tabs (mobile)
   useEffect(() => {
@@ -327,7 +340,7 @@ export default function Reposicao({ embedded = false }) {
           .is("deleted_at", null),
         supabase
           .from("revenda_produtos")
-          .select("id, nome, natureza")
+          .select("id, nome, natureza, tamanho")
           .is("deleted_at", null),
       ]);
 
@@ -383,10 +396,16 @@ export default function Reposicao({ embedded = false }) {
 
       const purchaseCount = sales.length;
       const totalQty = sales.reduce((s, x) => s + (x.quantidade || 0), 0);
+      const totalKg = sales.reduce((s, x) => {
+        const prod = produtos.find((p) => p.id === x.produto_id);
+        const peso = prod?.tamanho ? Number(prod.tamanho) : 0;
+        return s + (x.quantidade || 0) * peso;
+      }, 0);
       const totalRevenue = sales.reduce(
         (s, x) => s + (x.valor_venda_unitario || 0) * (x.quantidade || 0),
         0,
       );
+      const avgKg = purchaseCount > 0 ? totalKg / purchaseCount : 0;
       const avgQty = purchaseCount > 0 ? totalQty / purchaseCount : 0;
       const avgTicket = purchaseCount > 0 ? totalRevenue / purchaseCount : 0;
       const lastDate = sales.length > 0 ? sales[sales.length - 1].data : null;
@@ -411,6 +430,8 @@ export default function Reposicao({ embedded = false }) {
         ...pdv,
         purchaseCount,
         totalQty,
+        totalKg,
+        avgKg,
         totalRevenue,
         avgQty,
         avgTicket,
@@ -422,7 +443,7 @@ export default function Reposicao({ embedded = false }) {
         recentSales: [...sales].reverse().slice(0, 5),
       };
     });
-  }, [pdvs, filteredSaidas, contatos]);
+  }, [pdvs, filteredSaidas, contatos, produtos]);
 
   // ── Filtered & sorted list ──
   const filtered = useMemo(() => {
@@ -494,22 +515,39 @@ export default function Reposicao({ embedded = false }) {
   ];
 
   return (
-    <div className={`space-y-4 ${embedded ? "" : "-mx-2"}`}>
+    <div className={`space-y-4 ${embedded ? "relative" : "-mx-2"}`}>
       {/* Header */}
-      {!embedded && (
+      {!embedded ? (
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Zap className="text-amber-500" size={22} />
             <h1 className="text-xl font-bold text-text-primary">Reposição</h1>
           </div>
-          <button
-            onClick={() => setRefreshKey((k) => k + 1)}
-            className="p-2 rounded-lg hover:bg-surface-alt text-text-disabled hover:text-primary-500 transition-colors"
-            title="Atualizar"
-          >
-            <RefreshCw size={18} />
-          </button>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => setAiModal(true)}
+              className="p-2 rounded-lg hover:bg-surface-alt text-text-disabled hover:text-primary-500 transition-colors"
+              title="Insights IA"
+            >
+              <BotMessageSquare size={18} />
+            </button>
+            <button
+              onClick={() => setRefreshKey((k) => k + 1)}
+              className="p-2 rounded-lg hover:bg-surface-alt text-text-disabled hover:text-primary-500 transition-colors"
+              title="Atualizar"
+            >
+              <RefreshCw size={18} />
+            </button>
+          </div>
         </div>
+      ) : (
+        <button
+          onClick={() => setAiModal(true)}
+          className="absolute -top-10 right-0 p-2 rounded-lg hover:bg-surface-alt text-text-disabled hover:text-primary-500 transition-colors z-10"
+          title="Insights IA"
+        >
+          <BotMessageSquare size={18} />
+        </button>
       )}
 
       {/* KPI Cards */}
@@ -711,10 +749,165 @@ export default function Reposicao({ embedded = false }) {
       ) : (
         <div className="space-y-2">
           {filtered.map((pdv) => (
-            <PdvCard key={pdv.id} pdv={pdv} onContact={handleContact} />
+            <PdvCard
+              key={pdv.id}
+              pdv={pdv}
+              onContact={handleContact}
+              produtos={produtos}
+            />
           ))}
         </div>
       )}
+
+      {/* Modal IA */}
+      <Modal
+        open={aiModal}
+        onClose={() => setAiModal(false)}
+        title="Insights IA · Reposição"
+      >
+        <div className="flex flex-col h-[70vh]">
+          <div className="flex-1 overflow-y-auto space-y-3 mb-3">
+            {aiMessages.length === 0 && (
+              <div className="text-center py-8 space-y-2">
+                <BotMessageSquare
+                  className="mx-auto text-primary-500"
+                  size={32}
+                />
+                <p className="text-sm text-text-secondary">
+                  Pergunte sobre padrões de compra, previsões de reposição ou
+                  sugestões de prospecção.
+                </p>
+                <div className="flex flex-wrap gap-1.5 justify-center pt-2">
+                  {[
+                    "Quais PDVs devo priorizar?",
+                    "Resumo da semana",
+                    "Quem está comprando menos?",
+                  ].map((s) => (
+                    <button
+                      key={s}
+                      onClick={() => {
+                        setAiInput(s);
+                      }}
+                      className="text-xs bg-surface-alt rounded-lg px-2.5 py-1.5 text-text-secondary hover:text-primary-500 hover:bg-primary-50 transition-colors"
+                    >
+                      {s}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+            {aiMessages.map((msg, i) => (
+              <div
+                key={i}
+                className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
+              >
+                <div
+                  className={`max-w-[85%] rounded-xl px-3 py-2 text-sm whitespace-pre-wrap ${
+                    msg.role === "user"
+                      ? "bg-primary-500 text-white"
+                      : "bg-surface-alt text-text-primary"
+                  }`}
+                >
+                  {msg.content}
+                </div>
+              </div>
+            ))}
+            {aiLoading && (
+              <div className="flex justify-start">
+                <div className="bg-surface-alt rounded-xl px-3 py-2 text-sm text-text-disabled">
+                  Analisando dados...
+                </div>
+              </div>
+            )}
+          </div>
+          <form
+            onSubmit={async (e) => {
+              e.preventDefault();
+              if (!aiInput.trim() || aiLoading) return;
+              const userMsg = aiInput.trim();
+              setAiInput("");
+              setAiMessages((prev) => [
+                ...prev,
+                { role: "user", content: userMsg },
+              ]);
+              setAiLoading(true);
+              try {
+                const context = analytics.slice(0, 30).map((p) => ({
+                  nome: p.nome,
+                  dias_sem_comprar:
+                    p.daysSince === Infinity ? "nunca comprou" : p.daysSince,
+                  ciclo_medio_dias: Math.round(p.avgInterval || 0),
+                  total_kg: p.totalKg?.toFixed(1) || 0,
+                  kg_medio_compra: p.avgKg?.toFixed(1) || 0,
+                  total_compras: p.purchaseCount,
+                  risco: p.riskScore,
+                  ultima_compra: p.lastDate || "nunca",
+                }));
+                const res = await fetch(
+                  "https://api.groq.com/openai/v1/chat/completions",
+                  {
+                    method: "POST",
+                    headers: {
+                      "Content-Type": "application/json",
+                      Authorization: `Bearer ${import.meta.env.VITE_GROQ_API_KEY}`,
+                    },
+                    body: JSON.stringify({
+                      model: "llama-3.1-8b-instant",
+                      messages: [
+                        {
+                          role: "system",
+                          content: `Você é um assistente de vendas/reposição de gelo. Analise os dados dos PDVs e dê insights práticos e objetivos em português. Dados dos PDVs (top 30 por risco):\n${JSON.stringify(context, null, 2)}\n\nHoje: ${today}. Responda de forma concisa e acionável.`,
+                        },
+                        ...aiMessages.map((m) => ({
+                          role: m.role,
+                          content: m.content,
+                        })),
+                        { role: "user", content: userMsg },
+                      ],
+                      temperature: 0.7,
+                      max_tokens: 1024,
+                    }),
+                  },
+                );
+                const data = await res.json();
+                const reply =
+                  data.choices?.[0]?.message?.content ||
+                  "Não consegui gerar resposta.";
+                setAiMessages((prev) => [
+                  ...prev,
+                  { role: "assistant", content: reply },
+                ]);
+              } catch (err) {
+                setAiMessages((prev) => [
+                  ...prev,
+                  {
+                    role: "assistant",
+                    content: "Erro ao consultar IA: " + err.message,
+                  },
+                ]);
+              } finally {
+                setAiLoading(false);
+              }
+            }}
+            className="flex gap-2"
+          >
+            <input
+              type="text"
+              value={aiInput}
+              onChange={(e) => setAiInput(e.target.value)}
+              placeholder="Pergunte sobre seus PDVs..."
+              className="flex-1 rounded-lg border border-border-custom bg-bg px-3 py-2 text-sm"
+            />
+            <button
+              type="submit"
+              disabled={aiLoading || !aiInput.trim()}
+              className="bg-primary-500 hover:bg-primary-600 disabled:opacity-50 text-white rounded-lg px-3 py-2 transition-colors"
+            >
+              <Send size={16} />
+            </button>
+          </form>
+        </div>
+      </Modal>
     </div>
   );
 }
