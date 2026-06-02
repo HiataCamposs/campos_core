@@ -97,6 +97,7 @@ function FormProducao({ data, onChange, onSave, saving, funcionarios }) {
             }
             className="w-full rounded-lg border border-border-custom bg-bg px-3 py-2 text-sm"
           >
+            <option value={4}>4 kg</option>
             <option value={5}>5 kg</option>
             <option value={10}>10 kg</option>
             <option value={20}>20 kg</option>
