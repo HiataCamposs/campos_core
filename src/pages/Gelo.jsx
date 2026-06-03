@@ -664,6 +664,7 @@ export default function Gelo() {
       </div>,
     );
     return () => setTabs(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab, setTabs]);
 
   const handleSave = async (e) => {

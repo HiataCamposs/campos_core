@@ -130,19 +130,19 @@ function LayoutInner() {
         {user && (
           <div className="border-t border-border-custom p-4 space-y-3">
             <p className="text-xs text-text-disabled truncate">{user.email}</p>
-            <button
-              onClick={() => {
-                closeDrawer();
-                signOut();
-              }}
-              className="flex items-center gap-2 w-full px-3 py-2.5 rounded-xl text-sm font-medium text-text-secondary hover:bg-surface-alt hover:text-error transition-colors"
-            >
-              <LogOut size={18} />
-              Sair
-            </button>
-            <p className="text-[9px] text-text-disabled/40 text-right">
-              v{APP_VERSION}
-            </p>
+            <div className="flex items-center justify-between">
+              <button
+                onClick={() => {
+                  closeDrawer();
+                  signOut();
+                }}
+                className="flex items-center gap-2 px-3 py-2.5 rounded-xl text-sm font-medium text-text-secondary hover:bg-surface-alt hover:text-error transition-colors"
+              >
+                <LogOut size={18} />
+                Sair
+              </button>
+              <span className="text-[11px] text-text-disabled/40">v{APP_VERSION}</span>
+            </div>
           </div>
         )}
       </aside>
