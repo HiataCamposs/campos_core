@@ -27,7 +27,7 @@ BEGIN
     ),
     'pedidos', COUNT(DISTINCT s.id),
     'itens', COALESCE(SUM(i.quantidade), 0),
-    'kg_total', COALESCE(SUM(i.quantidade * COALESCE(p.tamanho, 0)), 0)
+    'kg_total', COALESCE(SUM(i.quantidade * COALESCE(p.tamanho::numeric, 0)), 0)
   ) INTO result
   FROM revenda_mov_saidas s
   JOIN revenda_mov_saidas_itens i ON i.mov_id = s.id
