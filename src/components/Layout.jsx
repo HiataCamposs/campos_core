@@ -141,7 +141,9 @@ function LayoutInner() {
                 <LogOut size={18} />
                 Sair
               </button>
-              <span className="text-[11px] text-text-disabled/40">v{APP_VERSION}</span>
+              <span className="text-[11px] text-text-disabled/40">
+                v{APP_VERSION}
+              </span>
             </div>
           </div>
         )}

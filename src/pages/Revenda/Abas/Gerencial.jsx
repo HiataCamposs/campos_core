@@ -324,7 +324,10 @@ export default function Gerencial() {
               {
                 label: "Itens",
                 value: kpis.itens,
-                extra: filtroNatureza === "Gelo" && kpis.kg_total > 0 ? `${Number(kpis.kg_total).toLocaleString("pt-BR")} kg` : null,
+                extra:
+                  filtroNatureza === "Gelo" && kpis.kg_total > 0
+                    ? `${Number(kpis.kg_total).toLocaleString("pt-BR")} kg`
+                    : null,
                 icon: Hash,
                 color: "text-accent-500",
                 bg: "bg-accent-50",
@@ -348,12 +351,12 @@ export default function Gerencial() {
                   className={`text-sm font-bold whitespace-nowrap ${kpi.color}`}
                 >
                   {kpi.value}
+                  {kpi.extra && (
+                    <span className="text-[10px] font-semibold text-text-secondary ml-1">
+                      ({kpi.extra})
+                    </span>
+                  )}
                 </p>
-                {kpi.extra && (
-                  <p className="text-[10px] font-semibold text-text-secondary mt-0.5">
-                    {kpi.extra}
-                  </p>
-                )}
               </div>
             ))}
           </div>
