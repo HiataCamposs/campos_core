@@ -324,6 +324,7 @@ export default function Gerencial() {
               {
                 label: "Itens",
                 value: kpis.itens,
+                extra: filtroNatureza === "Gelo" && kpis.kg_total > 0 ? `${Number(kpis.kg_total).toLocaleString("pt-BR")} kg` : null,
                 icon: Hash,
                 color: "text-accent-500",
                 bg: "bg-accent-50",
@@ -348,6 +349,11 @@ export default function Gerencial() {
                 >
                   {kpi.value}
                 </p>
+                {kpi.extra && (
+                  <p className="text-[10px] font-semibold text-text-secondary mt-0.5">
+                    {kpi.extra}
+                  </p>
+                )}
               </div>
             ))}
           </div>
