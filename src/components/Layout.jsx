@@ -141,6 +141,7 @@ function LayoutInner() {
             </button>
           </div>
         )}
+        <p className="text-[9px] text-text-disabled/40 text-right px-4 pb-2">v0.9.0</p>
       </aside>
 
       {/* ── Desktop sidebar ── */}
