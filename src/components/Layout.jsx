@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { Outlet, NavLink } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
+import { version as APP_VERSION } from "../../package.json";
 import {
   BottomTabsProvider,
   useBottomTabs,
@@ -139,9 +140,11 @@ function LayoutInner() {
               <LogOut size={18} />
               Sair
             </button>
+            <p className="text-[9px] text-text-disabled/40 text-right">
+              v{APP_VERSION}
+            </p>
           </div>
         )}
-        <p className="text-[9px] text-text-disabled/40 text-right px-4 pb-2">v0.9.0</p>
       </aside>
 
       {/* ── Desktop sidebar ── */}
