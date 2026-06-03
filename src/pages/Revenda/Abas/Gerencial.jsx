@@ -148,15 +148,20 @@ export default function Gerencial() {
           p_start: startDate,
           p_end: endDate,
           p_limit: 10,
+          p_natureza: filtroNatureza || null,
+          p_produto: filtroProduto || null,
         }),
         supabase.rpc("fn_gerencial_produtos", {
           p_start: startDate,
           p_end: endDate,
           p_natureza: filtroNatureza || null,
+          p_produto: filtroProduto || null,
         }),
         supabase.rpc("fn_gerencial_pagamentos", {
           p_start: startDate,
           p_end: endDate,
+          p_natureza: filtroNatureza || null,
+          p_produto: filtroProduto || null,
         }),
       ]);
 

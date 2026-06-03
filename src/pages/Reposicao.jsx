@@ -87,7 +87,7 @@ function riskLabel(score) {
 }
 
 // ── PDV Analytics Card ──
-function PdvCard({ pdv, onContact, produtos }) {
+function PdvCard({ pdv, produtos }) {
   const [open, setOpen] = useState(false);
   const risk = riskLabel(pdv.riskScore);
   const RiskIcon = risk.icon;
