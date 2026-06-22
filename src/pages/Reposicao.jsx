@@ -15,14 +15,21 @@ import {
   ShieldCheck,
   ShieldX,
   CalendarClock,
+  CalendarDays,
   Users,
   Zap,
   SlidersHorizontal,
   BotMessageSquare,
   Send,
-  X,
+  TrendingUp,
+  Target,
 } from "lucide-react";
 import Modal from "../components/Modal";
+
+const TABS = [
+  { key: "risco", label: "Risco", icon: ShieldAlert },
+  { key: "calendario", label: "Calendário", icon: CalendarDays },
+];
 
 const today = new Date().toISOString().slice(0, 10);
 const MS_PER_DAY = 86400000;
@@ -286,8 +293,9 @@ function PdvCard({ pdv, produtos }) {
 }
 
 // ── Main Page ──
-export default function Reposicao({ embedded = false }) {
+export default function Reposicao() {
   const { setTabs } = useBottomTabs();
+  const [tab, setTab] = useState("risco");
   const [loading, setLoading] = useState(true);
   const [pdvs, setPdvs] = useState([]);
   const [saidas, setSaidas] = useState([]);
@@ -304,10 +312,22 @@ export default function Reposicao({ embedded = false }) {
 
   // Bottom tabs (mobile)
   useEffect(() => {
-    if (embedded) return;
-    setTabs(null);
+    setTabs(
+      <div className="flex justify-around py-2">
+        {TABS.map((t) => (
+          <button
+            key={t.key}
+            onClick={() => setTab(t.key)}
+            className={`flex flex-col items-center text-[10px] gap-0.5 ${tab === t.key ? "text-primary-500 font-semibold" : "text-text-secondary"}`}
+          >
+            <t.icon size={20} />
+            {t.label}
+          </button>
+        ))}
+      </div>,
+    );
     return () => setTabs(null);
-  }, [setTabs, embedded]);
+  }, [tab, setTabs]);
 
   useEffect(() => {
     let ignore = false;
@@ -470,6 +490,106 @@ export default function Reposicao({ embedded = false }) {
     return { criticos, atencao, ativos, semCompra, total: analytics.length };
   }, [analytics]);
 
+  // ── Previsão de compra (Calendário) ──
+  const previsoes = useMemo(() => {
+    return analytics
+      .filter((p) => p.purchaseCount >= 2 && p.lastDate)
+      .map((pdv) => {
+        const sales = filteredSaidas
+          .filter((s) => s.pdv_id === pdv.id)
+          .sort((a, b) => a.data.localeCompare(b.data));
+
+        if (sales.length < 2) return null;
+
+        const ultima = sales[sales.length - 1];
+        const penultima = sales[sales.length - 2];
+        const diasEntreUltimos = Math.max(
+          1,
+          Math.floor(
+            (new Date(ultima.data + "T00:00:00") -
+              new Date(penultima.data + "T00:00:00")) /
+              MS_PER_DAY,
+          ),
+        );
+
+        // Kg da última compra
+        const kgUltima = sales
+          .filter((s) => s.data === ultima.data)
+          .reduce((sum, s) => {
+            const prod = produtos.find((p) => p.id === s.produto_id);
+            const peso = prod?.tamanho ? Number(prod.tamanho) : 0;
+            return sum + s.quantidade * peso;
+          }, 0);
+
+        // Consumo diário simples
+        const consumoDiario = kgUltima / diasEntreUltimos;
+
+        // Dias até acabar estoque = kg_ultima / consumo_diario = diasEntreUltimos
+        // Peso 70% - Histórico (dias_entre_pedidos)
+        const historicoPrevisao = pdv.avgInterval || diasEntreUltimos;
+
+        // Peso 20% - Comportamento recente (tendência das últimas 3)
+        const ultimas3 = sales.slice(-3);
+        let tendenciaFator = 1;
+        if (ultimas3.length >= 3) {
+          const qtys = ultimas3.map((s) => {
+            const prod = produtos.find((p) => p.id === s.produto_id);
+            const peso = prod?.tamanho ? Number(prod.tamanho) : 1;
+            return s.quantidade * peso;
+          });
+          const crescendo = qtys[2] > qtys[1] && qtys[1] > qtys[0];
+          const diminuindo = qtys[2] < qtys[1] && qtys[1] < qtys[0];
+          if (crescendo)
+            tendenciaFator = 0.85; // compra mais = ciclo mais curto
+          else if (diminuindo) tendenciaFator = 1.15;
+        }
+        const comportamentoPrevisao = diasEntreUltimos * tendenciaFator;
+
+        // Peso 10% - Calendário (dia da semana, fim de semana)
+        const ultimaDate = new Date(ultima.data + "T00:00:00");
+        const diaSemana = ultimaDate.getDay();
+        const calendarioFator = diaSemana === 0 || diaSemana === 6 ? 0.9 : 1;
+
+        // Previsão composta (ponderada)
+        const diasPrevistos = Math.round(
+          historicoPrevisao * 0.7 +
+            comportamentoPrevisao * 0.2 +
+            diasEntreUltimos * calendarioFator * 0.1,
+        );
+
+        const dataPrevista = new Date(
+          new Date(pdv.lastDate + "T00:00:00").getTime() +
+            diasPrevistos * MS_PER_DAY,
+        )
+          .toISOString()
+          .slice(0, 10);
+
+        // Probabilidade de comprar hoje
+        const diasDesdeUltima = pdv.daysSince;
+        let probabilidade = 0;
+        if (diasDesdeUltima >= diasPrevistos) {
+          probabilidade = Math.min(
+            99,
+            Math.round(50 + (diasDesdeUltima / diasPrevistos - 1) * 50),
+          );
+        } else {
+          probabilidade = Math.round((diasDesdeUltima / diasPrevistos) * 50);
+        }
+
+        return {
+          ...pdv,
+          consumoDiario,
+          diasPrevistos,
+          dataPrevista,
+          probabilidade,
+          kgUltima,
+          diasEntreUltimos,
+        };
+      })
+      .filter(Boolean)
+      .sort((a, b) => b.probabilidade - a.probabilidade);
+  }, [analytics, filteredSaidas, produtos]);
+
   const handleContact = (pdv) => {
     // placeholder for future scheduling feature
     alert(
@@ -515,247 +635,472 @@ export default function Reposicao({ embedded = false }) {
   ];
 
   return (
-    <div className={`space-y-4 ${embedded ? "relative" : "-mx-2"}`}>
+    <div className="space-y-4 -mx-2">
       {/* Header */}
-      {!embedded ? (
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Zap className="text-amber-500" size={22} />
-            <h1 className="text-xl font-bold text-text-primary">Reposição</h1>
-          </div>
-          <div className="flex items-center gap-1">
-            <button
-              onClick={() => setAiModal(true)}
-              className="p-2 rounded-lg hover:bg-surface-alt text-text-disabled hover:text-primary-500 transition-colors"
-              title="Insights IA"
-            >
-              <BotMessageSquare size={18} />
-            </button>
-            <button
-              onClick={() => setRefreshKey((k) => k + 1)}
-              className="p-2 rounded-lg hover:bg-surface-alt text-text-disabled hover:text-primary-500 transition-colors"
-              title="Atualizar"
-            >
-              <RefreshCw size={18} />
-            </button>
-          </div>
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <Zap className="text-amber-500" size={22} />
+          <h1 className="text-xl font-bold text-text-primary">Reposição</h1>
         </div>
-      ) : (
-        <button
-          onClick={() => setAiModal(true)}
-          className="absolute -top-10 right-0 p-2 rounded-lg hover:bg-surface-alt text-text-disabled hover:text-primary-500 transition-colors z-10"
-          title="Insights IA"
-        >
-          <BotMessageSquare size={18} />
-        </button>
-      )}
-
-      {/* KPI Cards */}
-      <div className="grid grid-cols-2 gap-3">
-        <button
-          onClick={() => setFiltro("critico")}
-          className={`bg-surface rounded-xl border p-3 text-left transition-all ${filtro === "critico" ? "border-red-500/50 ring-1 ring-red-500/20" : "border-border-custom"}`}
-        >
-          <div className="flex items-center gap-2 mb-1">
-            <div className="h-7 w-7 rounded-lg bg-red-500/10 flex items-center justify-center">
-              <Flame className="text-red-500" size={14} />
-            </div>
-            <span className="text-2xl font-bold text-red-600">
-              {kpis.criticos}
-            </span>
-          </div>
-          <p className="text-[10px] text-text-disabled font-medium">CRÍTICOS</p>
-        </button>
-
-        <button
-          onClick={() => setFiltro("atencao")}
-          className={`bg-surface rounded-xl border p-3 text-left transition-all ${filtro === "atencao" ? "border-amber-500/50 ring-1 ring-amber-500/20" : "border-border-custom"}`}
-        >
-          <div className="flex items-center gap-2 mb-1">
-            <div className="h-7 w-7 rounded-lg bg-amber-500/10 flex items-center justify-center">
-              <AlertTriangle className="text-amber-500" size={14} />
-            </div>
-            <span className="text-2xl font-bold text-amber-600">
-              {kpis.atencao}
-            </span>
-          </div>
-          <p className="text-[10px] text-text-disabled font-medium">ATENÇÃO</p>
-        </button>
-
-        <button
-          onClick={() => setFiltro("todos")}
-          className={`bg-surface rounded-xl border p-3 text-left transition-all ${filtro === "todos" ? "border-primary-500/50 ring-1 ring-primary-500/20" : "border-border-custom"}`}
-        >
-          <div className="flex items-center gap-2 mb-1">
-            <div className="h-7 w-7 rounded-lg bg-accent-50 flex items-center justify-center">
-              <Users className="text-accent-500" size={14} />
-            </div>
-            <span className="text-2xl font-bold text-accent-600">
-              {kpis.ativos}
-            </span>
-          </div>
-          <p className="text-[10px] text-text-disabled font-medium">
-            CLIENTES ATIVOS
-          </p>
-        </button>
-
-        <div className="bg-surface rounded-xl border border-border-custom p-3 text-left">
-          <div className="flex items-center gap-2 mb-1">
-            <div className="h-7 w-7 rounded-lg bg-surface-alt flex items-center justify-center">
-              <Clock className="text-text-disabled" size={14} />
-            </div>
-            <span className="text-2xl font-bold text-text-secondary">
-              {kpis.semCompra}
-            </span>
-          </div>
-          <p className="text-[10px] text-text-disabled font-medium">
-            SEM COMPRAS
-          </p>
+        <div className="flex items-center gap-1">
+          <button
+            onClick={() => setAiModal(true)}
+            className="p-2 rounded-lg hover:bg-surface-alt text-text-disabled hover:text-primary-500 transition-colors"
+            title="Insights IA"
+          >
+            <BotMessageSquare size={18} />
+          </button>
+          <button
+            onClick={() => setRefreshKey((k) => k + 1)}
+            className="p-2 rounded-lg hover:bg-surface-alt text-text-disabled hover:text-primary-500 transition-colors"
+            title="Atualizar"
+          >
+            <RefreshCw size={18} />
+          </button>
         </div>
       </div>
 
-      {/* Risk distribution bar */}
-      {analytics.length > 0 && (
-        <div className="bg-surface rounded-xl border border-border-custom p-3">
-          <div className="flex items-center justify-between mb-2">
-            <p className="text-xs font-medium text-text-secondary">
-              Distribuição de risco
-            </p>
-            <p className="text-[10px] text-text-disabled">
-              {analytics.length} PDVs
-            </p>
+      {/* ── Tab: Risco ── */}
+      {tab === "risco" ? (
+        <>
+          {/* Desktop tabs */}
+          <div className="hidden md:flex bg-surface rounded-xl border border-border-custom p-1 gap-1">
+            {TABS.map((t) => (
+              <button
+                key={t.key}
+                onClick={() => setTab(t.key)}
+                className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                  tab === t.key
+                    ? "bg-primary-500 text-white"
+                    : "text-text-secondary hover:bg-surface-alt"
+                }`}
+              >
+                <t.icon size={16} />
+                {t.label}
+              </button>
+            ))}
           </div>
-          <div className="flex rounded-full overflow-hidden h-2.5">
-            {[
-              {
-                count: analytics.filter((p) => p.riskScore >= 80).length,
-                color: "bg-red-500",
-              },
-              {
-                count: analytics.filter(
-                  (p) => p.riskScore >= 60 && p.riskScore < 80,
-                ).length,
-                color: "bg-amber-400",
-              },
-              {
-                count: analytics.filter(
-                  (p) => p.riskScore >= 40 && p.riskScore < 60,
-                ).length,
-                color: "bg-sky-400",
-              },
-              {
-                count: analytics.filter((p) => p.riskScore < 40).length,
-                color: "bg-green-400",
-              },
-            ].map((seg, i) =>
-              seg.count > 0 ? (
-                <div
-                  key={i}
-                  className={`${seg.color} transition-all`}
-                  style={{ width: `${(seg.count / analytics.length) * 100}%` }}
-                />
-              ) : null,
-            )}
-          </div>
-          <div className="flex justify-between mt-1.5 text-[9px] text-text-disabled">
-            <span className="flex items-center gap-1">
-              <span className="w-1.5 h-1.5 rounded-full bg-red-500" /> Crítico
-            </span>
-            <span className="flex items-center gap-1">
-              <span className="w-1.5 h-1.5 rounded-full bg-amber-400" /> Atenção
-            </span>
-            <span className="flex items-center gap-1">
-              <span className="w-1.5 h-1.5 rounded-full bg-sky-400" /> Monitorar
-            </span>
-            <span className="flex items-center gap-1">
-              <span className="w-1.5 h-1.5 rounded-full bg-green-400" /> Seguro
-            </span>
-          </div>
-        </div>
-      )}
 
-      {/* Filter toggle */}
-      <button
-        onClick={() => setShowFiltros(!showFiltros)}
-        className={`flex items-center gap-2 text-sm font-medium rounded-xl px-3 py-2 transition-colors ${
-          showFiltros
-            ? "bg-primary-500 text-white"
-            : "bg-surface border border-border-custom text-text-secondary hover:bg-surface-alt"
-        }`}
-      >
-        <SlidersHorizontal size={14} />
-        Filtros
-        {(filtroNatureza || filtro !== "todos") && (
-          <span
-            className={`text-[10px] rounded-full px-1.5 py-0.5 font-bold ${
+          {/* KPI Cards */}
+          <div className="grid grid-cols-2 gap-3">
+            <button
+              onClick={() => setFiltro("critico")}
+              className={`bg-surface rounded-xl border p-3 text-left transition-all ${filtro === "critico" ? "border-red-500/50 ring-1 ring-red-500/20" : "border-border-custom"}`}
+            >
+              <div className="flex items-center gap-2 mb-1">
+                <div className="h-7 w-7 rounded-lg bg-red-500/10 flex items-center justify-center">
+                  <Flame className="text-red-500" size={14} />
+                </div>
+                <span className="text-2xl font-bold text-red-600">
+                  {kpis.criticos}
+                </span>
+              </div>
+              <p className="text-[10px] text-text-disabled font-medium">
+                CRÍTICOS
+              </p>
+            </button>
+
+            <button
+              onClick={() => setFiltro("atencao")}
+              className={`bg-surface rounded-xl border p-3 text-left transition-all ${filtro === "atencao" ? "border-amber-500/50 ring-1 ring-amber-500/20" : "border-border-custom"}`}
+            >
+              <div className="flex items-center gap-2 mb-1">
+                <div className="h-7 w-7 rounded-lg bg-amber-500/10 flex items-center justify-center">
+                  <AlertTriangle className="text-amber-500" size={14} />
+                </div>
+                <span className="text-2xl font-bold text-amber-600">
+                  {kpis.atencao}
+                </span>
+              </div>
+              <p className="text-[10px] text-text-disabled font-medium">
+                ATENÇÃO
+              </p>
+            </button>
+
+            <button
+              onClick={() => setFiltro("todos")}
+              className={`bg-surface rounded-xl border p-3 text-left transition-all ${filtro === "todos" ? "border-primary-500/50 ring-1 ring-primary-500/20" : "border-border-custom"}`}
+            >
+              <div className="flex items-center gap-2 mb-1">
+                <div className="h-7 w-7 rounded-lg bg-accent-50 flex items-center justify-center">
+                  <Users className="text-accent-500" size={14} />
+                </div>
+                <span className="text-2xl font-bold text-accent-600">
+                  {kpis.ativos}
+                </span>
+              </div>
+              <p className="text-[10px] text-text-disabled font-medium">
+                CLIENTES ATIVOS
+              </p>
+            </button>
+
+            <div className="bg-surface rounded-xl border border-border-custom p-3 text-left">
+              <div className="flex items-center gap-2 mb-1">
+                <div className="h-7 w-7 rounded-lg bg-surface-alt flex items-center justify-center">
+                  <Clock className="text-text-disabled" size={14} />
+                </div>
+                <span className="text-2xl font-bold text-text-secondary">
+                  {kpis.semCompra}
+                </span>
+              </div>
+              <p className="text-[10px] text-text-disabled font-medium">
+                SEM COMPRAS
+              </p>
+            </div>
+          </div>
+
+          {/* Risk distribution bar */}
+          {analytics.length > 0 && (
+            <div className="bg-surface rounded-xl border border-border-custom p-3">
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-xs font-medium text-text-secondary">
+                  Distribuição de risco
+                </p>
+                <p className="text-[10px] text-text-disabled">
+                  {analytics.length} PDVs
+                </p>
+              </div>
+              <div className="flex rounded-full overflow-hidden h-2.5">
+                {[
+                  {
+                    count: analytics.filter((p) => p.riskScore >= 80).length,
+                    color: "bg-red-500",
+                  },
+                  {
+                    count: analytics.filter(
+                      (p) => p.riskScore >= 60 && p.riskScore < 80,
+                    ).length,
+                    color: "bg-amber-400",
+                  },
+                  {
+                    count: analytics.filter(
+                      (p) => p.riskScore >= 40 && p.riskScore < 60,
+                    ).length,
+                    color: "bg-sky-400",
+                  },
+                  {
+                    count: analytics.filter((p) => p.riskScore < 40).length,
+                    color: "bg-green-400",
+                  },
+                ].map((seg, i) =>
+                  seg.count > 0 ? (
+                    <div
+                      key={i}
+                      className={`${seg.color} transition-all`}
+                      style={{
+                        width: `${(seg.count / analytics.length) * 100}%`,
+                      }}
+                    />
+                  ) : null,
+                )}
+              </div>
+              <div className="flex justify-between mt-1.5 text-[9px] text-text-disabled">
+                <span className="flex items-center gap-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-red-500" />{" "}
+                  Crítico
+                </span>
+                <span className="flex items-center gap-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />{" "}
+                  Atenção
+                </span>
+                <span className="flex items-center gap-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-sky-400" />{" "}
+                  Monitorar
+                </span>
+                <span className="flex items-center gap-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-green-400" />{" "}
+                  Seguro
+                </span>
+              </div>
+            </div>
+          )}
+
+          {/* Filter toggle */}
+          <button
+            onClick={() => setShowFiltros(!showFiltros)}
+            className={`flex items-center gap-2 text-sm font-medium rounded-xl px-3 py-2 transition-colors ${
               showFiltros
-                ? "bg-white/20 text-white"
-                : "bg-primary-500/10 text-primary-500"
+                ? "bg-primary-500 text-white"
+                : "bg-surface border border-border-custom text-text-secondary hover:bg-surface-alt"
             }`}
           >
-            {(filtroNatureza ? 1 : 0) + (filtro !== "todos" ? 1 : 0)}
-          </span>
-        )}
-      </button>
+            <SlidersHorizontal size={14} />
+            Filtros
+            {(filtroNatureza || filtro !== "todos") && (
+              <span
+                className={`text-[10px] rounded-full px-1.5 py-0.5 font-bold ${
+                  showFiltros
+                    ? "bg-white/20 text-white"
+                    : "bg-primary-500/10 text-primary-500"
+                }`}
+              >
+                {(filtroNatureza ? 1 : 0) + (filtro !== "todos" ? 1 : 0)}
+              </span>
+            )}
+          </button>
 
-      {showFiltros && (
-        <div className="bg-surface rounded-xl border border-border-custom p-4 space-y-3">
-          <div>
-            <label className="block text-xs font-medium text-text-secondary mb-1.5">
-              Natureza do Produto
-            </label>
-            <select
-              value={filtroNatureza}
-              onChange={(e) => setFiltroNatureza(e.target.value)}
-              className="w-full rounded-lg border border-border-custom bg-bg px-3 py-2 text-sm"
-            >
-              <option value="">Todas</option>
-              {naturezaOptions.map((nat) => (
-                <option key={nat} value={nat}>
-                  {nat}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-text-secondary mb-1.5">
-              Status de Risco
-            </label>
-            <select
-              value={filtro}
-              onChange={(e) => setFiltro(e.target.value)}
-              className="w-full rounded-lg border border-border-custom bg-bg px-3 py-2 text-sm"
-            >
-              {filtroOptions.map((opt) => (
-                <option key={opt.key} value={opt.key}>
-                  {opt.label} ({opt.count})
-                </option>
-              ))}
-            </select>
-          </div>
-        </div>
-      )}
+          {showFiltros && (
+            <div className="bg-surface rounded-xl border border-border-custom p-4 space-y-3">
+              <div>
+                <label className="block text-xs font-medium text-text-secondary mb-1.5">
+                  Natureza do Produto
+                </label>
+                <select
+                  value={filtroNatureza}
+                  onChange={(e) => setFiltroNatureza(e.target.value)}
+                  className="w-full rounded-lg border border-border-custom bg-bg px-3 py-2 text-sm"
+                >
+                  <option value="">Todas</option>
+                  {naturezaOptions.map((nat) => (
+                    <option key={nat} value={nat}>
+                      {nat}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-text-secondary mb-1.5">
+                  Status de Risco
+                </label>
+                <select
+                  value={filtro}
+                  onChange={(e) => setFiltro(e.target.value)}
+                  className="w-full rounded-lg border border-border-custom bg-bg px-3 py-2 text-sm"
+                >
+                  {filtroOptions.map((opt) => (
+                    <option key={opt.key} value={opt.key}>
+                      {opt.label} ({opt.count})
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          )}
 
-      {/* PDV List */}
-      {filtered.length === 0 ? (
-        <div className="text-center py-12">
-          <Snowflake className="mx-auto text-text-disabled mb-2" size={32} />
-          <p className="text-sm text-text-secondary">
-            {filtro === "todos"
-              ? "Nenhum PDV cadastrado."
-              : `Nenhum PDV com status "${filtroOptions.find((o) => o.key === filtro)?.label}".`}
-          </p>
-        </div>
+          {/* PDV List */}
+          {filtered.length === 0 ? (
+            <div className="text-center py-12">
+              <Snowflake
+                className="mx-auto text-text-disabled mb-2"
+                size={32}
+              />
+              <p className="text-sm text-text-secondary">
+                {filtro === "todos"
+                  ? "Nenhum PDV cadastrado."
+                  : `Nenhum PDV com status "${filtroOptions.find((o) => o.key === filtro)?.label}".`}
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {filtered.map((pdv) => (
+                <PdvCard
+                  key={pdv.id}
+                  pdv={pdv}
+                  onContact={handleContact}
+                  produtos={produtos}
+                />
+              ))}
+            </div>
+          )}
+        </>
       ) : (
-        <div className="space-y-2">
-          {filtered.map((pdv) => (
-            <PdvCard
-              key={pdv.id}
-              pdv={pdv}
-              onContact={handleContact}
-              produtos={produtos}
-            />
-          ))}
+        /* ── Tab: Calendário ── */
+        <div className="space-y-4">
+          {/* Desktop tabs */}
+          <div className="hidden md:flex bg-surface rounded-xl border border-border-custom p-1 gap-1">
+            {TABS.map((t) => (
+              <button
+                key={t.key}
+                onClick={() => setTab(t.key)}
+                className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                  tab === t.key
+                    ? "bg-primary-500 text-white"
+                    : "text-text-secondary hover:bg-surface-alt"
+                }`}
+              >
+                <t.icon size={16} />
+                {t.label}
+              </button>
+            ))}
+          </div>
+
+          {/* Bloco 1: Clientes que devem comprar hoje */}
+          <div className="bg-surface rounded-xl border border-border-custom overflow-hidden">
+            <div className="flex items-center gap-2 px-4 py-3 border-b border-border-custom">
+              <div className="h-8 w-8 rounded-lg bg-red-500/10 flex items-center justify-center">
+                <Target className="text-red-500" size={16} />
+              </div>
+              <div>
+                <p className="text-sm font-semibold text-text-primary">
+                  Devem comprar hoje
+                </p>
+                <p className="text-[10px] text-text-disabled">
+                  Probabilidade baseada no histórico
+                </p>
+              </div>
+            </div>
+            <div className="divide-y divide-border-custom">
+              {previsoes.filter((p) => p.dataPrevista <= today).length === 0 ? (
+                <div className="px-4 py-6 text-center">
+                  <CalendarDays
+                    className="mx-auto text-text-disabled mb-2"
+                    size={24}
+                  />
+                  <p className="text-xs text-text-disabled">
+                    Nenhum cliente previsto para hoje
+                  </p>
+                </div>
+              ) : (
+                previsoes
+                  .filter((p) => p.dataPrevista <= today)
+                  .slice(0, 10)
+                  .map((p) => (
+                    <div
+                      key={p.id}
+                      className="flex items-center justify-between px-4 py-3"
+                    >
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className="h-8 w-8 rounded-lg bg-primary-50 flex items-center justify-center shrink-0">
+                          <span className="text-xs font-bold text-primary-600">
+                            {p.probabilidade}%
+                          </span>
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium text-text-primary truncate">
+                            {p.nome}
+                          </p>
+                          <p className="text-[10px] text-text-disabled">
+                            ~{p.consumoDiario.toFixed(1)} kg/dia · {p.daysSince}
+                            d sem comprar · ciclo ~{Math.round(p.avgInterval)}d
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-1 shrink-0">
+                        {p.contato && (
+                          <a
+                            href={`https://wa.me/55${p.contato.replace(/\D/g, "")}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="p-1.5 rounded-lg bg-green-500/10 text-green-600 hover:bg-green-500/20 transition-colors"
+                          >
+                            <MessageCircle size={14} />
+                          </a>
+                        )}
+                      </div>
+                    </div>
+                  ))
+              )}
+            </div>
+          </div>
+
+          {/* Bloco 2: Próximo pedido previsto */}
+          <div className="bg-surface rounded-xl border border-border-custom overflow-hidden">
+            <div className="flex items-center gap-2 px-4 py-3 border-b border-border-custom">
+              <div className="h-8 w-8 rounded-lg bg-accent-50 flex items-center justify-center">
+                <TrendingUp className="text-accent-500" size={16} />
+              </div>
+              <div>
+                <p className="text-sm font-semibold text-text-primary">
+                  Próximo pedido previsto
+                </p>
+                <p className="text-[10px] text-text-disabled">
+                  Data estimada da próxima compra
+                </p>
+              </div>
+            </div>
+            <div className="divide-y divide-border-custom">
+              {previsoes.length === 0 ? (
+                <div className="px-4 py-6 text-center">
+                  <CalendarDays
+                    className="mx-auto text-text-disabled mb-2"
+                    size={24}
+                  />
+                  <p className="text-xs text-text-disabled">
+                    Dados insuficientes para previsões
+                  </p>
+                </div>
+              ) : (
+                previsoes
+                  .sort((a, b) => a.dataPrevista.localeCompare(b.dataPrevista))
+                  .slice(0, 15)
+                  .map((p) => {
+                    const isToday = p.dataPrevista === today;
+                    const isPast = p.dataPrevista < today;
+                    return (
+                      <div
+                        key={p.id}
+                        className={`flex items-center justify-between px-4 py-3 ${isPast ? "bg-red-500/5" : ""}`}
+                      >
+                        <div className="flex items-center gap-3 min-w-0">
+                          <div
+                            className={`h-8 w-8 rounded-lg flex items-center justify-center shrink-0 ${
+                              isPast
+                                ? "bg-red-500/10"
+                                : isToday
+                                  ? "bg-amber-500/10"
+                                  : "bg-surface-alt"
+                            }`}
+                          >
+                            <CalendarClock
+                              className={
+                                isPast
+                                  ? "text-red-500"
+                                  : isToday
+                                    ? "text-amber-500"
+                                    : "text-text-disabled"
+                              }
+                              size={14}
+                            />
+                          </div>
+                          <div className="min-w-0">
+                            <p className="text-sm font-medium text-text-primary truncate">
+                              {p.nome}
+                            </p>
+                            <p className="text-[10px] text-text-disabled">
+                              ~{p.consumoDiario.toFixed(1)} kg/dia ·{" "}
+                              {p.kgUltima.toFixed(0)} kg última
+                            </p>
+                          </div>
+                        </div>
+                        <div className="text-right shrink-0">
+                          <p
+                            className={`text-sm font-bold ${
+                              isPast
+                                ? "text-red-600"
+                                : isToday
+                                  ? "text-amber-600"
+                                  : "text-text-primary"
+                            }`}
+                          >
+                            {fmtDate(p.dataPrevista)}
+                          </p>
+                          {isPast && (
+                            <p className="text-[10px] text-red-500 font-medium">
+                              Atrasado
+                            </p>
+                          )}
+                          {isToday && (
+                            <p className="text-[10px] text-amber-500 font-medium">
+                              Hoje
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })
+              )}
+            </div>
+          </div>
+
+          {/* Info card */}
+          <div className="bg-surface-alt/50 rounded-xl border border-border-custom p-4">
+            <p className="text-[10px] text-text-disabled leading-relaxed">
+              <strong className="text-text-secondary">Como funciona:</strong> A
+              previsão usa consumo diário (kg da última compra ÷ intervalo entre
+              pedidos), ponderado por histórico (70%), tendência recente (20%) e
+              padrão de calendário (10%).
+            </p>
+          </div>
         </div>
       )}
 

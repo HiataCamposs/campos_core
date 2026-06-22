@@ -155,7 +155,7 @@ function FormProducao({ data, onChange, onSave, saving, funcionarios }) {
   );
 }
 
-function FormCusto({ data, onChange, onSave, saving }) {
+function FormCusto({ data, onChange, onSave, saving, isEmbalagem }) {
   const [copied, setCopied] = useState(false);
   const isInsumo = data.categoria === "filtro";
   const isConsumo = data.categoria === "energia" || data.categoria === "agua";
@@ -171,7 +171,7 @@ function FormCusto({ data, onChange, onSave, saving }) {
 
   return (
     <form onSubmit={onSave} className="space-y-3">
-      <div className="grid grid-cols-[2fr_3fr] gap-3">
+      {isEmbalagem ? (
         <div>
           <label className="block text-sm font-medium mb-1">Data</label>
           <input
@@ -182,22 +182,35 @@ function FormCusto({ data, onChange, onSave, saving }) {
             className="w-full rounded-lg border border-border-custom bg-bg px-3 py-2 text-sm"
           />
         </div>
-        <div>
-          <label className="block text-sm font-medium mb-1">Categoria</label>
-          <select
-            value={data.categoria}
-            onChange={(e) => onChange({ ...data, categoria: e.target.value })}
-            className="w-full rounded-lg border border-border-custom bg-bg px-3 py-2 text-sm"
-          >
-            <option value="filtro">Refil filtro</option>
-            <option value="energia">Conta de Energia</option>
-            <option value="agua">Conta de Água</option>
-            <option value="limpeza_caixa">Limpeza da Caixa</option>
-            <option value="manutencao">Manutenção</option>
-            <option value="outro">Outro</option>
-          </select>
+      ) : (
+        <div className="grid grid-cols-[2fr_3fr] gap-3">
+          <div>
+            <label className="block text-sm font-medium mb-1">Data</label>
+            <input
+              type="date"
+              required
+              value={data.data}
+              onChange={(e) => onChange({ ...data, data: e.target.value })}
+              className="w-full rounded-lg border border-border-custom bg-bg px-3 py-2 text-sm"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium mb-1">Categoria</label>
+            <select
+              value={data.categoria}
+              onChange={(e) => onChange({ ...data, categoria: e.target.value })}
+              className="w-full rounded-lg border border-border-custom bg-bg px-3 py-2 text-sm"
+            >
+              <option value="filtro">Refil filtro</option>
+              <option value="energia">Conta de Energia</option>
+              <option value="agua">Conta de Água</option>
+              <option value="limpeza_caixa">Limpeza da Caixa</option>
+              <option value="manutencao">Manutenção</option>
+              <option value="outro">Outro</option>
+            </select>
+          </div>
         </div>
-      </div>
+      )}
       {!isConsumo && (
         <div>
           <label className="block text-sm font-medium mb-1">Descrição</label>
@@ -1111,6 +1124,7 @@ export default function Gelo() {
             onChange={setForm}
             onSave={handleSave}
             saving={saving}
+            isEmbalagem={custoSub === "embalagens"}
           />
         )}
         {tab === "consumo" && (

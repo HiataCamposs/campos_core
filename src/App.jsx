@@ -5,6 +5,7 @@ import Login from "./pages/Login";
 import Dashboard from "./pages/Dashboard";
 import Gelo from "./pages/Gelo";
 import Revenda from "./pages/Revenda";
+import Reposicao from "./pages/Reposicao";
 import Veiculos from "./pages/Veiculos";
 import Agendamentos from "./pages/Agendamentos";
 
@@ -37,6 +38,7 @@ function AppRoutes() {
         <Route index element={<Dashboard />} />
         <Route path="gelo" element={<Gelo />} />
         <Route path="revenda" element={<Revenda />} />
+        <Route path="reposicao" element={<Reposicao />} />
         <Route path="veiculos" element={<Veiculos />} />
         <Route path="agendamentos" element={<Agendamentos />} />
       </Route>

@@ -24,10 +24,8 @@ import {
   X,
   Wallet,
   DollarSign,
-  Zap,
   BarChart3,
 } from "lucide-react";
-import Reposicao from "./Reposicao";
 import Gerencial from "./Revenda/Abas/Gerencial";
 
 const today = new Date().toLocaleDateString("sv-SE", {
@@ -50,7 +48,6 @@ const dbOp = async (query, label = "Operação") => {
 const TABS = [
   { key: "entradas", label: "Entradas", icon: ArrowDownCircle },
   { key: "saidas", label: "Saídas", icon: ArrowUpCircle },
-  { key: "reposicao", label: "Reposição", icon: Zap },
   { key: "gerencial", label: "Gerencial", icon: BarChart3 },
   { key: "cadastro", label: "Cadastro", icon: Package },
 ];
@@ -1604,8 +1601,6 @@ export default function Revenda() {
         </div>
       ) : tab === "gerencial" ? (
         <Gerencial embedded />
-      ) : tab === "reposicao" ? (
-        <Reposicao embedded />
       ) : tab === "cadastro" ? (
         !cadastroSub ? (
           /* Cadastro menu */
