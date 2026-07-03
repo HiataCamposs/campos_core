@@ -130,12 +130,12 @@ function MovCard({
           0,
         );
   const totalVenda =
-    mov.total_venda != null
+    (mov.total_venda != null
       ? Number(mov.total_venda)
       : itens.reduce(
           (s, i) => s + (i.quantidade || 0) * (i.valor_venda_unitario || 0),
           0,
-        );
+        )) + Number(mov.frete || 0);
   const Icon = isEntrada ? ArrowDownCircle : ArrowUpCircle;
   const statusColors = isEntrada
     ? {
@@ -383,6 +383,7 @@ export default function Revenda() {
     logradouro: "",
     numero: "",
     observacao: "",
+    pede_nota: false,
   });
   const [naturezaSuggestions, setNaturezaSuggestions] = useState([]);
   const [showNaturezaSugg, setShowNaturezaSugg] = useState(false);
@@ -398,6 +399,7 @@ export default function Revenda() {
     data: today,
     pdv_id: "",
     observacao: "",
+    frete: "",
     itens: [
       {
         produto_id: "",
@@ -531,7 +533,7 @@ export default function Revenda() {
             let q = supabase
               .from("revenda_mov_saidas")
               .select(
-                "id, data, pdv_id, observacao, status_pagamento, is_perda, total_qty, total_compra, total_venda, created_at",
+                "id, data, pdv_id, observacao, status_pagamento, is_perda, frete, total_qty, total_compra, total_venda, created_at",
               )
               .is("deleted_at", null)
               .order("data", { ascending: false })
@@ -798,6 +800,7 @@ export default function Revenda() {
             nome: formPdv.nome,
             natureza: formPdv.natureza || null,
             observacao: formPdv.observacao || null,
+            pede_nota: formPdv.pede_nota || false,
           })
           .eq("id", editingPdvId),
         "salvar PDV",
@@ -814,6 +817,7 @@ export default function Revenda() {
             nome: formPdv.nome,
             natureza: formPdv.natureza || null,
             observacao: formPdv.observacao || null,
+            pede_nota: formPdv.pede_nota || false,
             user_id: user.id,
           })
           .select("id")
@@ -1061,6 +1065,7 @@ export default function Revenda() {
             : "Perda"
           : formSaida.observacao || null,
         is_perda: isPerda,
+        frete: Number(formSaida.frete) || 0,
       };
       let movId = editingMovId;
       if (editingMovId) {
@@ -1205,7 +1210,7 @@ export default function Revenda() {
     );
     const totalMov = isEnt
       ? Number(mov.total_compra || 0)
-      : Number(mov.total_venda || 0);
+      : Number(mov.total_venda || 0) + Number(mov.frete || 0);
     const totalPago = (data || []).reduce((s, t) => s + Number(t.valor), 0);
     const restante = Math.max(0, totalMov - totalPago);
     setFormTransacao({
@@ -1253,7 +1258,7 @@ export default function Revenda() {
     const isEnt2 = pagamentoMov._tipo === "entrada";
     const totalMov2 = isEnt2
       ? Number(pagamentoMov.total_compra || 0)
-      : Number(pagamentoMov.total_venda || 0);
+      : Number(pagamentoMov.total_venda || 0) + Number(pagamentoMov.frete || 0);
     const totalPago2 = (data || []).reduce((s, t) => s + Number(t.valor), 0);
     const restante2 = Math.max(0, totalMov2 - totalPago2);
     // Atualiza status_pagamento na saída
@@ -1297,7 +1302,8 @@ export default function Revenda() {
     setTransacoes(data || []);
     // Recalcula status_pagamento na saída
     if (pagamentoMov._tipo === "saida") {
-      const totalMov = Number(pagamentoMov.total_venda || 0);
+      const totalMov =
+        Number(pagamentoMov.total_venda || 0) + Number(pagamentoMov.frete || 0);
       const totalPago = (data || []).reduce((s, t) => s + Number(t.valor), 0);
       const newStatus =
         totalPago <= 0
@@ -1403,6 +1409,7 @@ export default function Revenda() {
       logradouro: "",
       numero: "",
       observacao: "",
+      pede_nota: false,
     });
     setModal("pdv");
   };
@@ -1421,6 +1428,7 @@ export default function Revenda() {
       logradouro: p.logradouro || "",
       numero: p.numero || "",
       observacao: p.observacao || "",
+      pede_nota: p.pede_nota || false,
       _endereco_id: p._endereco_id,
     });
     setModal("pdv");
@@ -1450,6 +1458,7 @@ export default function Revenda() {
       data: today,
       pdv_id: pdvs[0]?.id ?? "",
       observacao: "",
+      frete: "",
       itens: [
         {
           produto_id: naturezas[0]?.id ?? "",
@@ -1502,6 +1511,7 @@ export default function Revenda() {
         data: m.data || today,
         pdv_id: m.pdv_id || "",
         observacao: m.observacao || "",
+        frete: m.frete ? String(m.frete) : "",
         itens:
           itens.length > 0
             ? itens.map((i) => ({
@@ -2430,6 +2440,17 @@ export default function Revenda() {
               className="w-full rounded-lg border border-border-custom bg-bg px-3 py-2 text-sm"
             />
           </div>
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={formPdv.pede_nota}
+              onChange={(e) =>
+                setFormPdv({ ...formPdv, pede_nota: e.target.checked })
+              }
+              className="h-4 w-4 rounded border-border-custom text-primary-500 focus:ring-primary-500"
+            />
+            <span className="text-sm text-text-secondary">Pede notinha</span>
+          </label>
           <button
             type="submit"
             disabled={saving}
@@ -3051,17 +3072,59 @@ export default function Revenda() {
             </div>
           </div>
 
-          <div>
-            <label className="block text-sm font-medium mb-1">Observação</label>
-            <input
-              type="text"
-              value={formSaida.observacao}
-              onChange={(e) =>
-                setFormSaida({ ...formSaida, observacao: e.target.value })
-              }
-              className="w-full rounded-lg border border-border-custom bg-bg px-3 py-2 text-sm"
-            />
+          <div className="grid grid-cols-[1fr_auto] gap-3 items-end">
+            <div>
+              <label className="block text-sm font-medium mb-1">
+                Observação
+              </label>
+              <input
+                type="text"
+                value={formSaida.observacao}
+                onChange={(e) =>
+                  setFormSaida({ ...formSaida, observacao: e.target.value })
+                }
+                className="w-full rounded-lg border border-border-custom bg-bg px-3 py-2 text-sm"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1">Frete</label>
+              <input
+                type="number"
+                step="0.01"
+                min="0"
+                value={formSaida.frete}
+                onChange={(e) =>
+                  setFormSaida({ ...formSaida, frete: e.target.value })
+                }
+                className="w-24 rounded-lg border border-border-custom bg-bg px-3 py-2 text-sm"
+                placeholder="0,00"
+              />
+            </div>
           </div>
+
+          {/* Total geral com frete */}
+          {Number(formSaida.frete) > 0 && (
+            <div className="flex items-center justify-between bg-surface-alt rounded-lg px-3 py-2">
+              <span className="text-xs font-medium text-text-secondary">
+                Total com frete
+              </span>
+              <span className="text-sm font-bold text-primary-600">
+                R${" "}
+                {(
+                  formSaida.itens.reduce(
+                    (s, i) =>
+                      s +
+                      (Number(i.quantidade) || 0) *
+                        (Number(i.valor_venda_unitario) || 0),
+                    0,
+                  ) + Number(formSaida.frete || 0)
+                )
+                  .toFixed(2)
+                  .replace(".", ",")}
+              </span>
+            </div>
+          )}
+
           <button
             type="submit"
             disabled={saving}
@@ -3170,7 +3233,8 @@ export default function Revenda() {
             const itens = pagamentoMov.itens || [];
             const totalMov = isEntrada
               ? Number(pagamentoMov.total_compra || 0)
-              : Number(pagamentoMov.total_venda || 0);
+              : Number(pagamentoMov.total_venda || 0) +
+                Number(pagamentoMov.frete || 0);
             const totalPago = transacoes.reduce(
               (s, t) => s + Number(t.valor),
               0,
