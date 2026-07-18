@@ -14,6 +14,7 @@ import {
   Pencil,
   Copy,
   X,
+  ChevronLeft,
 } from "lucide-react";
 
 const TABS = [
@@ -142,6 +143,150 @@ function FormProducao({ data, onChange, onSave, saving, funcionarios }) {
           value={data.observacao}
           onChange={(e) => onChange({ ...data, observacao: e.target.value })}
           className="w-full rounded-lg border border-border-custom bg-bg px-3 py-2 text-sm"
+        />
+      </div>
+      <button
+        type="submit"
+        disabled={saving}
+        className="w-full bg-primary-500 hover:bg-primary-600 disabled:opacity-50 text-white font-medium rounded-lg px-4 py-2.5 transition-colors"
+      >
+        {saving ? "Salvando..." : "Salvar"}
+      </button>
+    </form>
+  );
+}
+
+function FormEmbalagem({ data, onChange, onSave, saving, tamanhos }) {
+  const totalComFrete = (Number(data.valor) || 0) + (Number(data.frete) || 0);
+  const valorUnit =
+    data.quantidade && Number(data.quantidade) > 0 && totalComFrete > 0
+      ? (totalComFrete / Number(data.quantidade)).toFixed(4)
+      : null;
+  const micrasOpts = ["0.10", "0.11", "0.12", "0.13", "0.14", "0.15", "0.16"];
+
+  return (
+    <form onSubmit={onSave} className="space-y-3">
+      <div>
+        <label className="block text-sm font-medium mb-1">Data</label>
+        <input
+          type="date"
+          required
+          value={data.data}
+          onChange={(e) => onChange({ ...data, data: e.target.value })}
+          className="w-full rounded-lg border border-border-custom bg-bg px-3 py-2 text-sm"
+        />
+      </div>
+      <div className="grid grid-cols-3 gap-3">
+        <div>
+          <label className="block text-sm font-medium mb-1">Alça</label>
+          <select
+            value={data.alca ? "sim" : "nao"}
+            onChange={(e) =>
+              onChange({ ...data, alca: e.target.value === "sim" })
+            }
+            className="w-full rounded-lg border border-border-custom bg-bg px-3 py-2 text-sm"
+          >
+            <option value="nao">Não</option>
+            <option value="sim">Sim</option>
+          </select>
+        </div>
+        <div>
+          <label className="block text-sm font-medium mb-1">Tamanho</label>
+          <select
+            required
+            value={data.tamanho_saco}
+            onChange={(e) =>
+              onChange({ ...data, tamanho_saco: e.target.value })
+            }
+            className="w-full rounded-lg border border-border-custom bg-bg px-3 py-2 text-sm"
+          >
+            <option value="">—</option>
+            {(tamanhos.length > 0 ? tamanhos : [4, 5, 10]).map((t) => (
+              <option key={t} value={t}>
+                {t} kg
+              </option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label className="block text-sm font-medium mb-1">Micras</label>
+          <select
+            value={data.micras}
+            onChange={(e) => onChange({ ...data, micras: e.target.value })}
+            className="w-full rounded-lg border border-border-custom bg-bg px-3 py-2 text-sm"
+          >
+            <option value="">—</option>
+            {micrasOpts.map((m) => (
+              <option key={m} value={m}>
+                {m.replace(".", ",")}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label className="block text-sm font-medium mb-1">Frete (R$)</label>
+          <input
+            type="number"
+            step="0.01"
+            min="0"
+            value={data.frete}
+            onChange={(e) => onChange({ ...data, frete: e.target.value })}
+            className="w-full rounded-lg border border-border-custom bg-bg px-3 py-2 text-sm"
+            placeholder="0.00"
+          />
+        </div>
+        <div>
+          <label className="block text-sm font-medium mb-1">
+            Valor total (R$)
+          </label>
+          <input
+            type="number"
+            required
+            step="0.01"
+            min="0"
+            value={data.valor}
+            onChange={(e) => onChange({ ...data, valor: e.target.value })}
+            className="w-full rounded-lg border border-border-custom bg-bg px-3 py-2 text-sm"
+            placeholder="0.00"
+          />
+        </div>
+        <div>
+          <label className="block text-sm font-medium mb-1">Quantidade</label>
+          <input
+            type="number"
+            required
+            min="1"
+            value={data.quantidade}
+            onChange={(e) => onChange({ ...data, quantidade: e.target.value })}
+            className="w-full rounded-lg border border-border-custom bg-bg px-3 py-2 text-sm"
+            placeholder="0"
+          />
+        </div>
+      </div>
+      <div className="bg-primary-50 rounded-lg px-3 py-2 text-sm">
+        <span className="text-text-secondary">Custo por unidade: </span>
+        <span className="font-semibold text-primary-500">
+          {valorUnit ? `R$ ${valorUnit.replace(".", ",")}` : "—"}
+        </span>
+      </div>
+      <div>
+        <label className="block text-sm font-medium mb-1">Descrição</label>
+        <input
+          type="text"
+          value={data.descricao}
+          onChange={(e) => onChange({ ...data, descricao: e.target.value })}
+          className="w-full rounded-lg border border-border-custom bg-bg px-3 py-2 text-sm"
+          placeholder="Ex: fornecedor, marca..."
+        />
+      </div>
+      <div>
+        <label className="block text-sm font-medium mb-1">Observação</label>
+        <textarea
+          rows={2}
+          value={data.observacao}
+          onChange={(e) => onChange({ ...data, observacao: e.target.value })}
+          className="w-full rounded-lg border border-border-custom bg-bg px-3 py-2 text-sm"
+          placeholder="Links, notas, etc..."
         />
       </div>
       <button
@@ -553,6 +698,8 @@ export default function Gelo() {
     new Set(allCategorias),
   );
   const [custoSub, setCustoSub] = useState(null);
+  const [embalagemTamanho, setEmbalagemTamanho] = useState(null);
+  const [embalagemTamanhos, setEmbalagemTamanhos] = useState([]);
   const [saving, setSaving] = useState(false);
   const [funcionarios, setFuncionarios] = useState([]);
 
@@ -584,18 +731,29 @@ export default function Gelo() {
     data: today,
     observacao: "",
   };
+  const emptyEmbalagem = {
+    data: today,
+    alca: false,
+    tamanho_saco: "",
+    micras: "",
+    frete: "",
+    valor: "",
+    quantidade: "",
+    descricao: "",
+    observacao: "",
+  };
 
   const [form, setForm] = useState(emptyProducao);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
     if (tab === "custos" && custoSub === "embalagens") {
-      const { data } = await supabase
+      let q = supabase
         .from("gelo_custo_embalagens")
         .select("*")
-        .is("deleted_at", null)
-        .order("data", { ascending: false })
-        .limit(50);
+        .is("deleted_at", null);
+      if (embalagemTamanho) q = q.eq("tamanho_saco", embalagemTamanho);
+      const { data } = await q.order("data", { ascending: false }).limit(50);
       setItems(data || []);
     } else if (tab === "custos") {
       const { data } = await supabase
@@ -639,6 +797,26 @@ export default function Gelo() {
       ];
       setFuncionarios(unique.sort());
     }
+  }, [tab, custoSub, embalagemTamanho]);
+
+  // Fetch tamanhos from revenda_produtos (gelo products)
+  useEffect(() => {
+    if (tab === "custos" && custoSub === "embalagens") {
+      supabase
+        .from("revenda_produtos")
+        .select("tamanho")
+        .is("deleted_at", null)
+        .eq("dimensao", "KG")
+        .not("tamanho", "is", null)
+        .then(({ data: rows }) => {
+          const unique = [
+            ...new Set(
+              (rows || []).map((r) => Number(r.tamanho)).filter(Boolean),
+            ),
+          ].sort((a, b) => a - b);
+          setEmbalagemTamanhos(unique);
+        });
+    }
   }, [tab, custoSub]);
 
   useEffect(() => {
@@ -651,6 +829,7 @@ export default function Gelo() {
     else setForm(emptyCusto);
     setFiltroCategoria(new Set(allCategorias));
     setCustoSub(null);
+    setEmbalagemTamanho(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab]);
 
@@ -683,6 +862,40 @@ export default function Gelo() {
   const handleSave = async (e) => {
     e.preventDefault();
     setSaving(true);
+    // ── Embalagens: tabela dedicada ──
+    if (tab === "custos" && custoSub === "embalagens") {
+      const qtd = Number(form.quantidade) || 0;
+      const valor = Number(form.valor) || 0;
+      const frete = Number(form.frete) || 0;
+      const payload = {
+        data: form.data,
+        alca: !!form.alca,
+        tamanho_saco: Number(form.tamanho_saco),
+        micras: form.micras ? Number(form.micras) : null,
+        frete,
+        valor,
+        quantidade: qtd,
+        valor_unitario:
+          qtd > 0 ? Number(((valor + frete) / qtd).toFixed(4)) : null,
+        descricao: form.descricao || null,
+        observacao: form.observacao || null,
+      };
+      const op = editingId
+        ? supabase
+            .from("gelo_custo_embalagens")
+            .update(payload)
+            .eq("id", editingId)
+        : supabase
+            .from("gelo_custo_embalagens")
+            .insert({ ...payload, user_id: user.id });
+      const { ok } = await dbOp(op, "salvar");
+      setSaving(false);
+      if (!ok) return;
+      setEditingId(null);
+      setModal(null);
+      fetchData();
+      return;
+    }
     const isConsumoCateg =
       form.categoria === "energia" || form.categoria === "agua";
     const targetTable = TABLE_MAP[tab];
@@ -794,9 +1007,11 @@ export default function Gelo() {
   };
 
   const handleDelete = async () => {
+    const delTable =
+      custoSub === "embalagens" ? "gelo_custo_embalagens" : TABLE_MAP[tab];
     await dbOp(
       supabase
-        .from(TABLE_MAP[tab])
+        .from(delTable)
         .update({ deleted_at: new Date().toISOString() })
         .eq("id", deleteId),
       "remover",
@@ -824,6 +1039,8 @@ export default function Gelo() {
             onClick={() => {
               setEditingId(null);
               if (tab === "producao") setForm(emptyProducao);
+              else if (tab === "custos" && custoSub === "embalagens")
+                setForm(emptyEmbalagem);
               else setForm(emptyCusto);
               setModal("add");
             }}
@@ -853,6 +1070,31 @@ export default function Gelo() {
           </button>
         ))}
       </div>
+
+      {/* Filtro por tamanho (embalagens) */}
+      {tab === "custos" &&
+        custoSub === "embalagens" &&
+        embalagemTamanhos.length > 0 && (
+          <div className="flex gap-1.5 flex-wrap">
+            <button
+              onClick={() => setEmbalagemTamanho(null)}
+              className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${!embalagemTamanho ? "bg-primary-500 text-white border-primary-500" : "bg-surface border-border-custom text-text-secondary hover:border-primary-500/50"}`}
+            >
+              Todos
+            </button>
+            {embalagemTamanhos.map((tam) => (
+              <button
+                key={tam}
+                onClick={() =>
+                  setEmbalagemTamanho(embalagemTamanho === tam ? null : tam)
+                }
+                className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${embalagemTamanho === tam ? "bg-primary-500 text-white border-primary-500" : "bg-surface border-border-custom text-text-secondary hover:border-primary-500/50"}`}
+              >
+                {tam} kg
+              </button>
+            ))}
+          </div>
+        )}
 
       {/* Sub-abas custos */}
       {tab === "custos" && !custoSub && (
@@ -891,6 +1133,7 @@ export default function Gelo() {
               key={g.key}
               onClick={() => {
                 setCustoSub(g.key);
+                setEmbalagemTamanho(null);
                 setFiltroCategoria(new Set(g.categs));
               }}
               className="flex flex-col items-center gap-1.5 bg-surface rounded-xl border border-border-custom p-4 hover:border-primary-500/50 hover:bg-primary-50/30 transition-colors"
@@ -948,7 +1191,14 @@ export default function Gelo() {
                             {item.quantidade} sacos {item.tamanho}kg
                           </span>
                         )}
-                        {(tab === "custos" || tab === "consumo") && (
+                        {tab === "custos" && custoSub === "embalagens" && (
+                          <span className="font-semibold">
+                            {item.tamanho_saco} kg ·{" "}
+                            {Number(item.quantidade).toLocaleString("pt-BR")} un
+                          </span>
+                        )}
+                        {((tab === "custos" && custoSub !== "embalagens") ||
+                          tab === "consumo") && (
                           <span className="font-semibold truncate">
                             {item.categoria === "limpeza_caixa"
                               ? "Limpeza da Caixa"
@@ -963,7 +1213,33 @@ export default function Gelo() {
                           </span>
                         )}
                       </div>
+                      {tab === "custos" && custoSub === "embalagens" && (
+                        <>
+                          <p className="text-xs text-text-disabled mt-0.5">
+                            <span className="font-semibold text-primary-500">
+                              R${" "}
+                              {Number(item.valor_unitario || 0)
+                                .toFixed(2)
+                                .replace(".", ",")}
+                              /un
+                            </span>
+                            {" · "}
+                            Total {fmtMoney(item.valor)}
+                            {item.frete > 0 && (
+                              <> · Frete {fmtMoney(item.frete)}</>
+                            )}
+                            {" · "}
+                            {item.alca ? "c/ alça" : "s/ alça"}
+                          </p>
+                          {item.descricao && (
+                            <p className="text-xs text-text-disabled mt-0.5 truncate">
+                              {item.descricao}
+                            </p>
+                          )}
+                        </>
+                      )}
                       {tab === "custos" &&
+                        custoSub !== "embalagens" &&
                         (item.categoria === "energia" ||
                           item.categoria === "agua") && (
                           <p className="text-xs text-text-disabled mt-0.5">
@@ -994,6 +1270,7 @@ export default function Gelo() {
                           </p>
                         )}
                       {tab === "custos" &&
+                        custoSub !== "embalagens" &&
                         item.categoria !== "energia" &&
                         item.categoria !== "agua" &&
                         item._table !== "gelo_consumo" &&
@@ -1032,6 +1309,24 @@ export default function Gelo() {
                               tamanho: item.tamanho || 5,
                               preco_pacote: item.preco_pacote ?? "",
                               funcionario: item.funcionario || "",
+                              observacao: item.observacao || "",
+                            });
+                          } else if (
+                            tab === "custos" &&
+                            custoSub === "embalagens"
+                          ) {
+                            setForm({
+                              data: item.data || "",
+                              alca: !!item.alca,
+                              tamanho_saco: item.tamanho_saco ?? "",
+                              micras:
+                                item.micras != null
+                                  ? Number(item.micras).toFixed(2)
+                                  : "",
+                              frete: item.frete ?? "",
+                              valor: item.valor ?? "",
+                              quantidade: item.quantidade ?? "",
+                              descricao: item.descricao || "",
                               observacao: item.observacao || "",
                             });
                           } else if (tab === "custos") {
@@ -1118,7 +1413,16 @@ export default function Gelo() {
             funcionarios={funcionarios}
           />
         )}
-        {tab === "custos" && (
+        {tab === "custos" && custoSub === "embalagens" && (
+          <FormEmbalagem
+            data={form}
+            onChange={setForm}
+            onSave={handleSave}
+            saving={saving}
+            tamanhos={embalagemTamanhos}
+          />
+        )}
+        {tab === "custos" && custoSub !== "embalagens" && (
           <FormCusto
             data={form}
             onChange={setForm}
