@@ -99,6 +99,7 @@ export default function Gerencial() {
     lucro: 0,
     margem: 0,
     inadimplentes: 0,
+    valor_pendente: 0,
     pedidos: 0,
     itens: 0,
   });
@@ -173,6 +174,7 @@ export default function Gerencial() {
           lucro: 0,
           margem: 0,
           inadimplentes: 0,
+          valor_pendente: 0,
           pedidos: 0,
           itens: 0,
         },
@@ -194,8 +196,10 @@ export default function Gerencial() {
   const presets = [
     { label: "7d", days: 7 },
     { label: "15d", days: 15 },
-    { label: "30d", days: 30 },
-    { label: "90d", days: 90 },
+    { label: "1m", days: 30 },
+    { label: "3m", days: 90 },
+    { label: "6m", days: 180 },
+    { label: "1a", days: 365 },
   ];
 
   // Calcula dias do range atual
@@ -309,7 +313,8 @@ export default function Gerencial() {
               },
               {
                 label: "Inadimplentes",
-                value: kpis.inadimplentes,
+                value: `Pedidos: ${Number(kpis.inadimplentes || 0)} - ${fmtMoney(kpis.valor_pendente || 0)}`,
+                compact: true,
                 icon: AlertTriangle,
                 color: kpis.inadimplentes > 0 ? "text-warning" : "text-success",
                 bg: kpis.inadimplentes > 0 ? "bg-warning/10" : "bg-success/10",
@@ -348,7 +353,7 @@ export default function Gerencial() {
                   </span>
                 </div>
                 <p
-                  className={`text-sm font-bold whitespace-nowrap ${kpi.color}`}
+                  className={`${kpi.compact ? "text-xs leading-tight" : "text-sm"} font-bold ${kpi.compact ? "whitespace-normal" : "whitespace-nowrap"} ${kpi.color}`}
                 >
                   {kpi.value}
                   {kpi.extra && (

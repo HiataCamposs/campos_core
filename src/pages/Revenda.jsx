@@ -52,6 +52,16 @@ const TABS = [
   { key: "cadastro", label: "Cadastro", icon: Package },
 ];
 
+const DIAS_SEMANA = [
+  { key: "segunda", label: "Segunda" },
+  { key: "terca", label: "Terça" },
+  { key: "quarta", label: "Quarta" },
+  { key: "quinta", label: "Quinta" },
+  { key: "sexta", label: "Sexta" },
+  { key: "sabado", label: "Sábado" },
+  { key: "domingo", label: "Domingo" },
+];
+
 const fmtMoney = (v) =>
   v != null && v !== ""
     ? `R$ ${Number(v).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`
@@ -322,6 +332,8 @@ function MovCard({
 // ══════════════════════════════════════════════════════════
 
 export default function Revenda() {
+  const SAIDAS_PAGE_SIZE = 50;
+
   const { user } = useAuth();
   const { setTabs } = useBottomTabs();
   const [tab, setTab] = useState("saidas");
@@ -335,9 +347,13 @@ export default function Revenda() {
   const [editingProdutoId, setEditingProdutoId] = useState(null);
   const [editingPdvId, setEditingPdvId] = useState(null);
   const [expandedPdvId, setExpandedPdvId] = useState(null);
-  const [autoOpenMovId, setAutoOpenMovId] = useState(null);
+  const [autoOpenMovId] = useState(null);
   const [editingMovId, setEditingMovId] = useState(null);
   const [perdaPrompt, setPerdaPrompt] = useState(false);
+  const [saidaPdvFiltro, setSaidaPdvFiltro] = useState("");
+  const [saidasOffset, setSaidasOffset] = useState(0);
+  const [saidasHasMore, setSaidasHasMore] = useState(true);
+  const [loadingMoreSaidas, setLoadingMoreSaidas] = useState(false);
 
   // Data
   const [naturezas, setNaturezas] = useState([]);
@@ -384,6 +400,7 @@ export default function Revenda() {
     numero: "",
     observacao: "",
     pede_nota: false,
+    dias_folga: ["segunda"],
   });
   const [naturezaSuggestions, setNaturezaSuggestions] = useState([]);
   const [showNaturezaSugg, setShowNaturezaSugg] = useState(false);
@@ -475,7 +492,7 @@ export default function Revenda() {
   const fetchPdvs = useCallback(async () => {
     const { data } = await supabase
       .from("revenda_pdvs")
-      .select("id, nome, natureza, observacao")
+      .select("id, nome, natureza, observacao, pede_nota, dias_folga")
       .is("deleted_at", null)
       .order("nome");
     const ids = (data || []).map((p) => p.id);
@@ -529,17 +546,14 @@ export default function Revenda() {
     const fetchSaidas =
       tab === "entradas"
         ? Promise.resolve({ data: [] })
-        : (() => {
-            let q = supabase
-              .from("revenda_mov_saidas")
-              .select(
-                "id, data, pdv_id, observacao, status_pagamento, is_perda, frete, total_qty, total_compra, total_venda, created_at",
-              )
-              .is("deleted_at", null)
-              .order("data", { ascending: false })
-              .limit(100);
-            return q;
-          })();
+        : supabase
+            .from("revenda_mov_saidas")
+            .select(
+              "id, data, pdv_id, observacao, status_pagamento, is_perda, frete, total_qty, total_compra, total_venda, created_at",
+            )
+            .is("deleted_at", null)
+            .order("data", { ascending: false })
+            .range(0, SAIDAS_PAGE_SIZE - 1);
     const [{ data: entradas }, { data: saidas }] = await Promise.all([
       fetchEntradas,
       fetchSaidas,
@@ -570,7 +584,56 @@ export default function Revenda() {
       );
     });
     setMovimentacoes(all);
+    if (tab === "saidas") {
+      const qtdSaidas = (saidas || []).length;
+      setSaidasOffset(qtdSaidas);
+      setSaidasHasMore(qtdSaidas === SAIDAS_PAGE_SIZE);
+    } else {
+      setSaidasOffset(0);
+      setSaidasHasMore(false);
+    }
   }, [tab]);
+
+  const handleListarMaisSaidas = useCallback(async () => {
+    if (loadingMoreSaidas || !saidasHasMore || tab !== "saidas") return;
+
+    setLoadingMoreSaidas(true);
+    const { data: saidas } = await supabase
+      .from("revenda_mov_saidas")
+      .select(
+        "id, data, pdv_id, observacao, status_pagamento, is_perda, frete, total_qty, total_compra, total_venda, created_at",
+      )
+      .is("deleted_at", null)
+      .order("data", { ascending: false })
+      .range(saidasOffset, saidasOffset + SAIDAS_PAGE_SIZE - 1);
+
+    const novasSaidas = (saidas || []).map((s) => ({
+      ...s,
+      itens: [],
+      _tipo: "saida",
+      _table: "revenda_mov_saidas",
+    }));
+
+    setMovimentacoes((prev) =>
+      [...prev, ...novasSaidas].sort((a, b) => {
+        if (a._tipo === "saida" && b._tipo === "saida") {
+          const statusOrder = { pendente: 0, parcial: 1, pago: 2 };
+          const sa = statusOrder[a.status_pagamento] ?? 1;
+          const sb = statusOrder[b.status_pagamento] ?? 1;
+          if (sa !== sb) return sa - sb;
+        }
+        return (
+          (b.data || "").localeCompare(a.data || "") ||
+          (b.created_at || "").localeCompare(a.created_at || "")
+        );
+      }),
+    );
+
+    const quantidadeNovas = novasSaidas.length;
+    setSaidasOffset((prev) => prev + quantidadeNovas);
+    setSaidasHasMore(quantidadeNovas === SAIDAS_PAGE_SIZE);
+    setLoadingMoreSaidas(false);
+  }, [loadingMoreSaidas, saidasHasMore, saidasOffset, tab]);
 
   // Effect 1: Static data (runs once on mount)
   useEffect(() => {
@@ -593,6 +656,10 @@ export default function Revenda() {
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab]);
+
+  useEffect(() => {
+    if (tab !== "saidas") setSaidaPdvFiltro("");
   }, [tab]);
 
   // Register bottom tabs for mobile
@@ -801,6 +868,9 @@ export default function Revenda() {
             natureza: formPdv.natureza || null,
             observacao: formPdv.observacao || null,
             pede_nota: formPdv.pede_nota || false,
+            dias_folga: Array.isArray(formPdv.dias_folga)
+              ? formPdv.dias_folga
+              : ["segunda"],
           })
           .eq("id", editingPdvId),
         "salvar PDV",
@@ -818,6 +888,9 @@ export default function Revenda() {
             natureza: formPdv.natureza || null,
             observacao: formPdv.observacao || null,
             pede_nota: formPdv.pede_nota || false,
+            dias_folga: Array.isArray(formPdv.dias_folga)
+              ? formPdv.dias_folga
+              : ["segunda"],
             user_id: user.id,
           })
           .select("id")
@@ -918,6 +991,8 @@ export default function Revenda() {
       logradouro: "",
       numero: "",
       observacao: "",
+      pede_nota: false,
+      dias_folga: ["segunda"],
     });
     await fetchPdvs();
   };
@@ -1410,6 +1485,7 @@ export default function Revenda() {
       numero: "",
       observacao: "",
       pede_nota: false,
+      dias_folga: ["segunda"],
     });
     setModal("pdv");
   };
@@ -1429,6 +1505,7 @@ export default function Revenda() {
       numero: p.numero || "",
       observacao: p.observacao || "",
       pede_nota: p.pede_nota || false,
+      dias_folga: Array.isArray(p.dias_folga) ? p.dias_folga : ["segunda"],
       _endereco_id: p._endereco_id,
     });
     setModal("pdv");
@@ -1536,6 +1613,11 @@ export default function Revenda() {
 
   // ── Render ──
 
+  const movimentacoesExibidas =
+    tab === "saidas" && saidaPdvFiltro
+      ? movimentacoes.filter((m) => m.pdv_id === saidaPdvFiltro)
+      : movimentacoes;
+
   return (
     <div className="space-y-4 -mx-2">
       {/* Header */}
@@ -1603,6 +1685,26 @@ export default function Revenda() {
           </button>
         ))}
       </div>
+
+      {tab === "saidas" && (
+        <div className="bg-surface rounded-xl border border-border-custom p-3">
+          <label className="block text-xs font-medium text-text-secondary mb-1">
+            Filtrar por Estabelecimento
+          </label>
+          <select
+            value={saidaPdvFiltro}
+            onChange={(e) => setSaidaPdvFiltro(e.target.value)}
+            className="w-full rounded-lg border border-border-custom bg-bg px-3 py-2 text-sm"
+          >
+            <option value="">Todos os PDVs</option>
+            {pdvs.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.nome}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
 
       {/* Conteúdo */}
       {loading ? (
@@ -1858,228 +1960,145 @@ export default function Revenda() {
               </div>
             ) : (
               <div className="space-y-2">
-                {(() => {
-                  // Compute last purchase date per PDV from saidas
-                  const lastPurchaseMap = {};
-                  movimentacoes
-                    .filter((m) => m._tipo === "saida" && m.pdv_id)
-                    .forEach((m) => {
-                      if (
-                        !lastPurchaseMap[m.pdv_id] ||
-                        m.data > lastPurchaseMap[m.pdv_id]
-                      ) {
-                        lastPurchaseMap[m.pdv_id] = m.data;
-                      }
-                    });
-                  return [...pdvs]
-                    .sort((a, b) => {
-                      const da = lastPurchaseMap[a.id] || "";
-                      const db = lastPurchaseMap[b.id] || "";
-                      return (db || "9999").localeCompare(da || "9999");
-                    })
-                    .map((p) => {
-                      const lastDate = lastPurchaseMap[p.id];
-                      const isOpen = expandedPdvId === p.id;
-                      return (
-                        <div
-                          key={p.id}
-                          className="bg-surface rounded-xl border border-border-custom overflow-hidden"
-                        >
-                          <div
-                            onClick={() =>
-                              setExpandedPdvId(isOpen ? null : p.id)
-                            }
-                            className="p-4 flex items-center justify-between cursor-pointer hover:bg-surface-alt/50 transition-colors"
-                          >
-                            <div className="flex items-center gap-3 min-w-0 flex-1">
-                              <div className="h-9 w-9 shrink-0 rounded-lg bg-primary-50 flex items-center justify-center">
-                                <Store className="text-primary-500" size={16} />
-                              </div>
-                              <div className="min-w-0">
-                                <p className="font-semibold text-sm truncate">
-                                  {p.nome}
-                                </p>
-                                <p className="text-xs text-text-disabled truncate">
-                                  {[
-                                    p.natureza,
-                                    p.bairro,
-                                    lastDate
-                                      ? new Date(
-                                          lastDate + "T00:00:00",
-                                        ).toLocaleDateString("pt-BR")
-                                      : "Sem compras",
-                                  ]
-                                    .filter(Boolean)
-                                    .join(" · ")}
-                                </p>
-                              </div>
-                            </div>
-                            <ChevronDown
-                              size={16}
-                              className={`text-text-disabled transition-transform ${isOpen ? "rotate-180" : ""}`}
-                            />
+                {pdvs.map((p) => {
+                  const isOpen = expandedPdvId === p.id;
+                  return (
+                    <div
+                      key={p.id}
+                      className="bg-surface rounded-xl border border-border-custom overflow-hidden"
+                    >
+                      <div
+                        onClick={() => setExpandedPdvId(isOpen ? null : p.id)}
+                        className="p-4 flex items-center justify-between cursor-pointer hover:bg-surface-alt/50 transition-colors"
+                      >
+                        <div className="flex items-center gap-3 min-w-0 flex-1">
+                          <div className="h-9 w-9 shrink-0 rounded-lg bg-primary-50 flex items-center justify-center">
+                            <Store className="text-primary-500" size={16} />
                           </div>
-                          {isOpen && (
-                            <div className="px-4 pb-3 pt-2 border-t border-border-custom space-y-1.5">
-                              {p.contatos &&
-                                p.contatos.length > 0 &&
-                                p.contatos.some(
-                                  (c) => c.tipo || c.nome || c.telefone,
-                                ) && (
-                                  <div className="space-y-1">
-                                    <p className="text-[10px] text-text-disabled font-medium uppercase">
-                                      Contatos
-                                    </p>
-                                    {p.contatos
-                                      .filter(
-                                        (c) => c.tipo || c.nome || c.telefone,
-                                      )
-                                      .map((c, ci) => (
-                                        <div
-                                          key={ci}
-                                          className="flex items-center justify-between text-xs bg-surface-alt rounded-lg px-2.5 py-1.5"
-                                        >
-                                          <span className="text-text-primary font-medium truncate">
-                                            {[c.tipo, c.nome]
-                                              .filter(Boolean)
-                                              .join(" · ")}
-                                          </span>
-                                          <span className="flex items-center gap-1.5 shrink-0 ml-2">
-                                            {c.telefone && (
-                                              <>
-                                                <span className="text-text-secondary">
-                                                  {c.telefone}
-                                                </span>
-                                                <a
-                                                  href={`https://wa.me/55${c.telefone.replace(/\D/g, "")}`}
-                                                  target="_blank"
-                                                  rel="noopener noreferrer"
-                                                  onClick={(e) =>
-                                                    e.stopPropagation()
-                                                  }
-                                                  className="text-success hover:text-success/80 transition-colors"
-                                                >
-                                                  <svg
-                                                    width="14"
-                                                    height="14"
-                                                    viewBox="0 0 24 24"
-                                                    fill="currentColor"
-                                                  >
-                                                    <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z" />
-                                                  </svg>
-                                                </a>
-                                              </>
-                                            )}
-                                          </span>
-                                        </div>
-                                      ))}
-                                  </div>
-                                )}
-                              {(p.cidade || p.logradouro) && (
-                                <div className="space-y-1">
-                                  <p className="text-[10px] text-text-disabled font-medium uppercase">
-                                    Endereço
-                                  </p>
-                                  <div className="flex items-center justify-between text-xs bg-surface-alt rounded-lg px-2.5 py-1.5">
-                                    <span className="text-text-primary font-medium truncate">
-                                      {[
-                                        p.logradouro,
-                                        p.numero,
-                                        p.bairro,
-                                        p.cidade,
-                                      ]
-                                        .filter(Boolean)
-                                        .join(", ")}
-                                    </span>
-                                    <a
-                                      href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent([p.logradouro, p.numero, p.bairro, p.cidade].filter(Boolean).join(", "))}`}
-                                      target="_blank"
-                                      rel="noopener noreferrer"
-                                      onClick={(e) => e.stopPropagation()}
-                                      className="text-primary-500 hover:text-primary-600 transition-colors shrink-0 ml-2"
-                                    >
-                                      <MapPin size={14} />
-                                    </a>
-                                  </div>
-                                </div>
-                              )}
-                              {p.observacao && (
-                                <p className="text-xs text-text-disabled">
-                                  Obs: {p.observacao}
+                          <div className="min-w-0">
+                            <p className="font-semibold text-sm truncate">
+                              {p.nome}
+                            </p>
+                            <p className="text-xs text-text-disabled truncate">
+                              {[p.natureza, p.bairro]
+                                .filter(Boolean)
+                                .join(" · ")}
+                            </p>
+                          </div>
+                        </div>
+                        <ChevronDown
+                          size={16}
+                          className={`text-text-disabled transition-transform ${isOpen ? "rotate-180" : ""}`}
+                        />
+                      </div>
+                      {isOpen && (
+                        <div className="px-4 pb-3 pt-2 border-t border-border-custom space-y-1.5">
+                          {p.contatos &&
+                            p.contatos.length > 0 &&
+                            p.contatos.some(
+                              (c) => c.tipo || c.nome || c.telefone,
+                            ) && (
+                              <div className="space-y-1">
+                                <p className="text-[10px] text-text-disabled font-medium uppercase">
+                                  Contatos
                                 </p>
-                              )}
-                              <div className="flex items-center gap-1 pt-1">
-                                {lastDate &&
-                                  (() => {
-                                    const lastMov = movimentacoes.find(
-                                      (m) =>
-                                        m._tipo === "saida" &&
-                                        m.pdv_id === p.id &&
-                                        m.data === lastDate,
-                                    );
-                                    if (!lastMov) return null;
-                                    return (
-                                      <button
-                                        onClick={() => {
-                                          setAutoOpenMovId(lastMov.id);
-                                          setTab("saidas");
-                                          setCadastroSub(null);
-                                          setTimeout(() => {
-                                            const el = document.getElementById(
-                                              `mov-${lastMov.id}`,
-                                            );
-                                            if (el) {
-                                              el.scrollIntoView({
-                                                behavior: "smooth",
-                                                block: "center",
-                                              });
-                                              el.classList.add(
-                                                "ring-2",
-                                                "ring-primary-500",
-                                              );
-                                              setTimeout(() => {
-                                                el.classList.remove(
-                                                  "ring-2",
-                                                  "ring-primary-500",
-                                                );
-                                                setAutoOpenMovId(null);
-                                              }, 2000);
-                                            }
-                                          }, 300);
-                                        }}
-                                        className="p-2 rounded-lg hover:bg-surface-alt text-text-disabled hover:text-accent-500 transition-colors"
-                                        title="Ir para última compra"
-                                      >
-                                        <ArrowUpCircle size={15} />
-                                      </button>
-                                    );
-                                  })()}
-                                <button
-                                  onClick={() => openEditPdv(p)}
-                                  className="p-2 rounded-lg hover:bg-surface-alt text-text-disabled hover:text-primary-500 transition-colors"
+                                {p.contatos
+                                  .filter((c) => c.tipo || c.nome || c.telefone)
+                                  .map((c, ci) => (
+                                    <div
+                                      key={ci}
+                                      className="flex items-center justify-between text-xs bg-surface-alt rounded-lg px-2.5 py-1.5"
+                                    >
+                                      <span className="text-text-primary font-medium truncate">
+                                        {[c.tipo, c.nome]
+                                          .filter(Boolean)
+                                          .join(" · ")}
+                                      </span>
+                                      <span className="flex items-center gap-1.5 shrink-0 ml-2">
+                                        {c.telefone && (
+                                          <>
+                                            <span className="text-text-secondary">
+                                              {c.telefone}
+                                            </span>
+                                            <a
+                                              href={`https://wa.me/55${c.telefone.replace(/\D/g, "")}`}
+                                              target="_blank"
+                                              rel="noopener noreferrer"
+                                              onClick={(e) =>
+                                                e.stopPropagation()
+                                              }
+                                              className="text-success hover:text-success/80 transition-colors"
+                                            >
+                                              <svg
+                                                width="14"
+                                                height="14"
+                                                viewBox="0 0 24 24"
+                                                fill="currentColor"
+                                              >
+                                                <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z" />
+                                              </svg>
+                                            </a>
+                                          </>
+                                        )}
+                                      </span>
+                                    </div>
+                                  ))}
+                              </div>
+                            )}
+                          {(p.cidade || p.logradouro) && (
+                            <div className="space-y-1">
+                              <p className="text-[10px] text-text-disabled font-medium uppercase">
+                                Endereço
+                              </p>
+                              <div className="flex items-center justify-between text-xs bg-surface-alt rounded-lg px-2.5 py-1.5">
+                                <span className="text-text-primary font-medium truncate">
+                                  {[p.logradouro, p.numero, p.bairro, p.cidade]
+                                    .filter(Boolean)
+                                    .join(", ")}
+                                </span>
+                                <a
+                                  href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent([p.logradouro, p.numero, p.bairro, p.cidade].filter(Boolean).join(", "))}`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  onClick={(e) => e.stopPropagation()}
+                                  className="text-primary-500 hover:text-primary-600 transition-colors shrink-0 ml-2"
                                 >
-                                  <Pencil size={15} />
-                                </button>
-                                <button
-                                  onClick={() =>
-                                    confirmDelete(p.id, "revenda_pdvs")
-                                  }
-                                  className="p-2 rounded-lg hover:bg-surface-alt text-text-disabled hover:text-error transition-colors"
-                                >
-                                  <Trash2 size={15} />
-                                </button>
+                                  <MapPin size={14} />
+                                </a>
                               </div>
                             </div>
                           )}
+                          {p.observacao && (
+                            <p className="text-xs text-text-disabled">
+                              Obs: {p.observacao}
+                            </p>
+                          )}
+                          <div className="flex items-center gap-1 pt-1">
+                            <button
+                              onClick={() => openEditPdv(p)}
+                              className="p-2 rounded-lg hover:bg-surface-alt text-text-disabled hover:text-primary-500 transition-colors"
+                            >
+                              <Pencil size={15} />
+                            </button>
+                            <button
+                              onClick={() =>
+                                confirmDelete(p.id, "revenda_pdvs")
+                              }
+                              className="p-2 rounded-lg hover:bg-surface-alt text-text-disabled hover:text-error transition-colors"
+                            >
+                              <Trash2 size={15} />
+                            </button>
+                          </div>
                         </div>
-                      );
-                    });
-                })()}
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             )}
           </div>
         )
-      ) : movimentacoes.length === 0 ? (
+      ) : movimentacoesExibidas.length === 0 ? (
         <div className="bg-surface rounded-2xl border border-border-custom p-8 text-center">
           <p className="text-text-secondary">
             Nenhuma {tab === "entradas" ? "entrada" : "saída"} encontrada.
@@ -2087,7 +2106,7 @@ export default function Revenda() {
         </div>
       ) : (
         <div className="space-y-2">
-          {movimentacoes.map((m) => (
+          {movimentacoesExibidas.map((m) => (
             <MovCard
               key={m.id}
               mov={m}
@@ -2100,6 +2119,18 @@ export default function Revenda() {
               onPagamento={openPagamento}
             />
           ))}
+        </div>
+      )}
+
+      {tab === "saidas" && saidasHasMore && (
+        <div className="flex justify-center pt-1">
+          <button
+            onClick={handleListarMaisSaidas}
+            disabled={loadingMoreSaidas}
+            className="px-4 py-2 rounded-lg border border-border-custom bg-surface hover:bg-surface-alt text-sm font-medium text-text-primary disabled:opacity-60 disabled:cursor-not-allowed"
+          >
+            {loadingMoreSaidas ? "Carregando..." : "Listar mais"}
+          </button>
         </div>
       )}
 
@@ -2300,6 +2331,44 @@ export default function Revenda() {
                 ))}
               </ul>
             )}
+          </div>
+          <div>
+            <div className="flex items-center justify-between mb-1">
+              <label className="block text-sm font-medium">Dias de folga</label>
+            </div>
+            <div className="grid grid-cols-3 gap-2">
+              {DIAS_SEMANA.map((d) => {
+                const checked = (formPdv.dias_folga || []).includes(d.key);
+                return (
+                  <label
+                    key={d.key}
+                    className="flex items-center gap-1.5 text-xs text-text-secondary rounded-lg border border-border-custom px-2 py-1.5 bg-bg"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={(e) => {
+                        const atual = formPdv.dias_folga || [];
+                        if (e.target.checked) {
+                          setFormPdv({
+                            ...formPdv,
+                            dias_folga: [...atual, d.key],
+                          });
+                        } else {
+                          const next = atual.filter((x) => x !== d.key);
+                          setFormPdv({
+                            ...formPdv,
+                            dias_folga: next,
+                          });
+                        }
+                      }}
+                      className="h-3.5 w-3.5 rounded border-border-custom text-primary-500 focus:ring-primary-500"
+                    />
+                    <span className="truncate">{d.label}</span>
+                  </label>
+                );
+              })}
+            </div>
           </div>
           <div>
             <div className="flex items-center justify-between mb-1">
