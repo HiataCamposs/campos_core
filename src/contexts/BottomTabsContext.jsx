@@ -11,6 +11,7 @@ export function BottomTabsProvider({ children }) {
   );
 }
 
+// eslint-disable-next-line react-refresh/only-export-components -- hook junto do provider (padrão de context)
 export function useBottomTabs() {
   return useContext(BottomTabsContext);
 }

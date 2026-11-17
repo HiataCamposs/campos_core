@@ -1,3 +1,18 @@
+-- ⚠️  ARQUIVO LEGADO / DESATUALIZADO — NÃO RODE NUM BANCO EXISTENTE
+--
+-- Este é o schema ORIGINAL do projeto, de antes das migrations 008+.
+-- Muitas tabelas daqui foram renomeadas ou removidas depois
+-- (ex.: revenda_movimentacoes → revenda_mov_saidas, gelo_despesas → gelo_custos).
+-- As migrations 001-007 e a criação de revenda_produtos/lembretes não estão
+-- no repositório, então este arquivo + migrations/ NÃO reproduzem o banco atual.
+--
+-- O schema verdadeiro está no Supabase. Para gerar uma cópia atualizada:
+--   npx supabase login
+--   npx supabase db dump --schema public --db-url "<connection string>" -f supabase_schema.sql
+-- (connection string em: Supabase → Project Settings → Database)
+--
+-- Mantido só como referência histórica.
+
 -- ══════════════════════════════════════════════════════════
 -- Campos Core - Schema Supabase
 -- ══════════════════════════════════════════════════════════

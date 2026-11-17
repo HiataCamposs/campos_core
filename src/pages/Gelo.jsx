@@ -16,6 +16,9 @@ import {
   X,
   ChevronLeft,
 } from "lucide-react";
+import { todaySP } from "../lib/date";
+import { dbOp } from "../lib/db";
+import { fmtMoney, fmtDate } from "../lib/format";
 
 const TABS = [
   { key: "producao", label: "Produção", icon: Factory },
@@ -24,15 +27,6 @@ const TABS = [
 ];
 
 // ── Helper: supabase mutation with error handling ──
-const dbOp = async (query, label = "Operação") => {
-  const res = await query;
-  if (res.error) {
-    console.error(`[${label}]`, res.error);
-    alert(`Erro ao ${label}: ${res.error.message}`);
-    return { ok: false, error: res.error, data: res.data };
-  }
-  return { ok: true, data: res.data };
-};
 
 // ── Formulários ────────────────────────────────────────
 
@@ -667,9 +661,6 @@ function FormConsumo({ data, onChange, onSave, saving }) {
 
 // ── Página principal ───────────────────────────────────
 
-const today = new Date().toLocaleDateString("sv-SE", {
-  timeZone: "America/Sao_Paulo",
-});
 const TABLE_MAP = {
   producao: "gelo_producao",
   custos: "gelo_custos",
@@ -704,7 +695,7 @@ export default function Gelo() {
   const [funcionarios, setFuncionarios] = useState([]);
 
   const emptyProducao = {
-    data: today,
+    data: todaySP(),
     quantidade: "",
     tamanho: 5,
     preco_pacote: "",
@@ -712,7 +703,7 @@ export default function Gelo() {
     observacao: "",
   };
   const emptyCusto = {
-    data: today,
+    data: todaySP(),
     descricao: "",
     valor: "",
     quantidade: "",
@@ -728,11 +719,11 @@ export default function Gelo() {
     consumo: "",
     valor_conta: "",
     percentual_fabrica: "100",
-    data: today,
+    data: todaySP(),
     observacao: "",
   };
   const emptyEmbalagem = {
-    data: today,
+    data: todaySP(),
     alca: false,
     tamanho_saco: "",
     micras: "",
@@ -981,25 +972,29 @@ export default function Gelo() {
     setSaving(false);
     setEditingId(null);
     setModal(null);
-    // Update custo_unitario on revenda_produtos for gelo products (match by name)
+    // Atualiza custo_unitario dos produtos de gelo do MESMO tamanho.
+    // Compara pela coluna tamanho (não pelo nome: "%5%kg%" casava com 15kg/25kg).
     if (tab === "producao" && payload.preco_pacote != null && payload.tamanho) {
-      const tamanho = parseInt(payload.tamanho);
-      if (tamanho) {
+      const toNum = (v) => Number(String(v ?? "").replace(",", "."));
+      const tamanho = toNum(payload.tamanho);
+      if (tamanho > 0) {
         const { data: prods } = await supabase
           .from("revenda_produtos")
-          .select("id")
-          .ilike("nome", `%gelo%${tamanho}%kg%`)
+          .select("id, tamanho")
+          .ilike("natureza", "gelo")
+          .eq("dimensao", "KG")
           .is("deleted_at", null);
-        if (prods && prods.length > 0) {
-          for (const p of prods) {
-            await dbOp(
-              supabase
-                .from("revenda_produtos")
-                .update({ custo_unitario: payload.preco_pacote })
-                .eq("id", p.id),
-              "atualizar custo produto",
-            );
-          }
+        const ids = (prods || [])
+          .filter((p) => toNum(p.tamanho) === tamanho)
+          .map((p) => p.id);
+        if (ids.length > 0) {
+          await dbOp(
+            supabase
+              .from("revenda_produtos")
+              .update({ custo_unitario: payload.preco_pacote })
+              .in("id", ids),
+            "atualizar custo produto",
+          );
         }
       }
     }
@@ -1021,9 +1016,6 @@ export default function Gelo() {
     fetchData();
   };
 
-  const fmtMoney = (v) => (v != null ? `R$ ${Number(v).toFixed(2)}` : "—");
-  const fmtDate = (d) =>
-    d ? new Date(d + "T00:00:00").toLocaleDateString("pt-BR") : "—";
 
   return (
     <div className="space-y-4 -mx-2">

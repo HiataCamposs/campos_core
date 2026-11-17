@@ -21,21 +21,11 @@ import {
   CartesianGrid,
   Legend,
 } from "recharts";
+import { todaySP, daysAgoSP } from "../../../lib/date";
+import { fmtMoney } from "../../../lib/format";
 
-const today = new Date().toLocaleDateString("sv-SE", {
-  timeZone: "America/Sao_Paulo",
-});
 
-const daysAgo = (n) => {
-  const d = new Date();
-  d.setDate(d.getDate() - n);
-  return d.toLocaleDateString("sv-SE", { timeZone: "America/Sao_Paulo" });
-};
 
-const fmtMoney = (v) =>
-  v != null
-    ? `R$ ${Number(v).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-    : "—";
 
 const fmtPct = (v) => (v != null ? `${Number(v).toFixed(1)}%` : "—");
 
@@ -87,11 +77,13 @@ const CustomTooltipBar = ({ active, payload, label }) => {
 };
 
 export default function Gerencial() {
-  const [startDate, setStartDate] = useState(daysAgo(30));
-  const [endDate, setEndDate] = useState(today);
+  const [startDate, setStartDate] = useState(daysAgoSP(30));
+  const [endDate, setEndDate] = useState(todaySP());
   const [filtroProduto, setFiltroProduto] = useState("");
   const [filtroNatureza, setFiltroNatureza] = useState("");
+  const [filtroPdv, setFiltroPdv] = useState("");
   const [loading, setLoading] = useState(true);
+  const [erro, setErro] = useState(null);
 
   // RPC results
   const [kpis, setKpis] = useState({
@@ -111,6 +103,7 @@ export default function Gerencial() {
   // For filter dropdowns only
   const [produtos, setProdutos] = useState([]);
   const [naturezasUnicas, setNaturezasUnicas] = useState([]);
+  const [pdvs, setPdvs] = useState([]);
 
   // Fetch filter options (lightweight, only once)
   useEffect(() => {
@@ -126,6 +119,12 @@ export default function Gerencial() {
         ].sort();
         setNaturezasUnicas(nats);
       });
+    supabase
+      .from("revenda_pdvs")
+      .select("id, nome")
+      .is("deleted_at", null)
+      .order("nome")
+      .then(({ data }) => setPdvs(data || []));
   }, []);
 
   // Fetch analytics via RPCs
@@ -140,6 +139,7 @@ export default function Gerencial() {
         p_end: endDate,
         p_natureza: filtroNatureza || null,
         p_produto: filtroProduto || null,
+        p_pdv: filtroPdv || null,
       };
 
       const [kpisRes, evolRes, pdvsRes, prodsRes, pagRes] = await Promise.all([
@@ -151,22 +151,37 @@ export default function Gerencial() {
           p_limit: 10,
           p_natureza: filtroNatureza || null,
           p_produto: filtroProduto || null,
+          p_pdv: filtroPdv || null,
         }),
         supabase.rpc("fn_gerencial_produtos", {
           p_start: startDate,
           p_end: endDate,
           p_natureza: filtroNatureza || null,
           p_produto: filtroProduto || null,
+          p_pdv: filtroPdv || null,
         }),
         supabase.rpc("fn_gerencial_pagamentos", {
           p_start: startDate,
           p_end: endDate,
           p_natureza: filtroNatureza || null,
           p_produto: filtroProduto || null,
+          p_pdv: filtroPdv || null,
         }),
       ]);
 
       if (ignore) return;
+
+      // Em erro, mostra aviso em vez de zeros (que pareceriam "sem vendas")
+      const falha = [kpisRes, evolRes, pdvsRes, prodsRes, pagRes].find(
+        (r) => r.error,
+      );
+      if (falha) {
+        console.error("[gerencial]", falha.error);
+        setErro(falha.error.message);
+        setLoading(false);
+        return;
+      }
+      setErro(null);
 
       setKpis(
         kpisRes.data || {
@@ -190,7 +205,7 @@ export default function Gerencial() {
     return () => {
       ignore = true;
     };
-  }, [startDate, endDate, filtroNatureza, filtroProduto]);
+  }, [startDate, endDate, filtroNatureza, filtroProduto, filtroPdv]);
 
   // ── Preset buttons ──
   const presets = [
@@ -231,8 +246,8 @@ export default function Gerencial() {
               onChange={(e) => {
                 const days = Number(e.target.value);
                 if (days) {
-                  setStartDate(daysAgo(days));
-                  setEndDate(today);
+                  setStartDate(daysAgoSP(days));
+                  setEndDate(todaySP());
                 }
               }}
               className="rounded-lg border border-border-custom bg-bg px-1.5 py-1.5 text-sm w-[60px]"
@@ -279,11 +294,32 @@ export default function Gerencial() {
               ))}
           </select>
         </div>
+        <div className="mt-2">
+          <select
+            value={filtroPdv}
+            onChange={(e) => setFiltroPdv(e.target.value)}
+            className="rounded-lg border border-border-custom bg-bg px-2 py-1.5 text-sm w-full"
+          >
+            <option value="">Todos PDVs</option>
+            {pdvs.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.nome}
+              </option>
+            ))}
+          </select>
+        </div>
       </div>
 
       {loading ? (
         <div className="flex justify-center py-12">
           <div className="animate-spin h-8 w-8 border-3 border-primary-500 border-t-transparent rounded-full" />
+        </div>
+      ) : erro ? (
+        <div className="bg-surface rounded-xl border border-error/40 p-4 text-sm">
+          <p className="font-semibold text-error">
+            Não foi possível carregar os dados do Gerencial.
+          </p>
+          <p className="text-text-secondary mt-1 break-words">{erro}</p>
         </div>
       ) : (
         <>

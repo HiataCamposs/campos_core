@@ -19,10 +19,10 @@ import {
   Eye,
   Pencil,
 } from "lucide-react";
+import { todaySP } from "../lib/date";
+import { dbOp, fetchAll } from "../lib/db";
+import { fmtMoney, fmtDate } from "../lib/format";
 
-const today = new Date().toLocaleDateString("sv-SE", {
-  timeZone: "America/Sao_Paulo",
-});
 
 const TABS = [
   { key: "abastecimentos", label: "Abastecimentos", icon: Fuel },
@@ -32,17 +32,16 @@ const TABS = [
 
 // ── Helpers ────────────────────────────────────────────
 
-const fmtMoney = (v) =>
-  v != null && v !== ""
-    ? `R$ ${Number(v).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`
-    : "—";
-const fmtDate = (d) =>
-  d ? new Date(d + "T00:00:00").toLocaleDateString("pt-BR") : "—";
+// Litros: aceita vírgula ou ponto, casas decimais livres, menos de 1000 L.
+// Ex.: "38,4567", "38.4567", "5", ",5"
+const LITROS_REGEX = /^\d{0,3}([.,]\d*)?$/;
+const parseLitros = (v) => Number(String(v ?? "").replace(",", ".")) || 0;
+
 const fmtKm = (v) =>
   v != null && v !== "" ? `${Number(v).toLocaleString("pt-BR")} km` : "—";
 
 function calcKmMes(compraData, compraKm, vendaData, vendaKm, latestKm) {
-  const dataFim = vendaData || today;
+  const dataFim = vendaData || todaySP();
   const kmFim = vendaKm || latestKm || compraKm;
   if (!compraData || compraKm == null || kmFim == null) return null;
   const d1 = new Date(compraData + "T00:00:00");
@@ -194,7 +193,8 @@ function Detail({ label, value, col2 }) {
   );
 }
 
-function InfoBox({ icon: InfoIcon, iconColor, title, lines }) {
+function InfoBox({ icon, iconColor, title, lines }) {
+  const InfoIcon = icon;
   return (
     <div className="bg-surface-alt rounded-lg p-3 space-y-0.5">
       <div className="flex items-center gap-1.5 text-xs font-semibold text-text-secondary mb-1">
@@ -427,7 +427,7 @@ export default function Veiculos() {
   const [formVeiculo, setFormVeiculo] = useState({ ...emptyVeiculo });
   const [formAbast, setFormAbast] = useState({
     veiculo_id: "",
-    data: today,
+    data: todaySP(),
     km: "",
     litros: "",
     valor_litro: "",
@@ -438,7 +438,7 @@ export default function Veiculos() {
   });
   const [formManut, setFormManut] = useState({
     veiculo_id: "",
-    data: today,
+    data: todaySP(),
     km: "",
     descricao: "",
     valor: "",
@@ -456,17 +456,24 @@ export default function Veiculos() {
   }, []);
 
   const fetchLatestKm = useCallback(async () => {
+    // fetchAll: sem paginação o Supabase corta em 1000 linhas
     const [{ data: abasts }, { data: manuts }] = await Promise.all([
-      supabase
-        .from("veiculos_abastecimentos")
-        .select("veiculo_id, km, data")
-        .is("deleted_at", null)
-        .not("km", "is", null),
-      supabase
-        .from("veiculos_manutencoes")
-        .select("veiculo_id, km, data")
-        .is("deleted_at", null)
-        .not("km", "is", null),
+      fetchAll(() =>
+        supabase
+          .from("veiculos_abastecimentos")
+          .select("veiculo_id, km, data")
+          .is("deleted_at", null)
+          .not("km", "is", null)
+          .order("id"),
+      ),
+      fetchAll(() =>
+        supabase
+          .from("veiculos_manutencoes")
+          .select("veiculo_id, km, data")
+          .is("deleted_at", null)
+          .not("km", "is", null)
+          .order("id"),
+      ),
     ]);
     const map = {};
     [...(abasts || []), ...(manuts || [])].forEach((r) => {
@@ -479,8 +486,9 @@ export default function Veiculos() {
     setLatestKmMap(result);
   }, []);
 
+  // O spinner é ligado no clique da aba (setLoading(true) aqui, dentro do
+  // effect, causaria render em cascata)
   const fetchTab = useCallback(async () => {
-    setLoading(true);
     if (tab === "veiculos") {
       setItems([]);
     } else if (tab === "abastecimentos") {
@@ -514,7 +522,14 @@ export default function Veiculos() {
   }, [tab]);
 
   useEffect(() => {
-    Promise.all([fetchVeiculos(), fetchLatestKm(), fetchTab()]);
+    // Assíncrono (microtask) para não chamar setState de forma síncrona no effect
+    let ignore = false;
+    Promise.resolve().then(() => {
+      if (!ignore) Promise.all([fetchVeiculos(), fetchLatestKm(), fetchTab()]);
+    });
+    return () => {
+      ignore = true;
+    };
   }, [fetchVeiculos, fetchLatestKm, fetchTab]);
 
   // Register bottom tabs for mobile
@@ -525,7 +540,9 @@ export default function Veiculos() {
           <button
             key={t.key}
             onClick={() => {
+              if (t.key === tab) return;
               setItems([]);
+              setLoading(true);
               setTab(t.key);
             }}
             className={`flex flex-col items-center text-[10px] gap-0.5 ${tab === t.key ? "text-primary-500 font-semibold" : "text-text-secondary"}`}
@@ -557,13 +574,18 @@ export default function Veiculos() {
     payload.venda_km = payload.venda_km ? Number(payload.venda_km) : null;
     payload.venda_data = payload.venda_data || null;
 
+    let res;
     if (editId) {
       const { user_id: _uid, ...rest } = payload;
-      await supabase.from("veiculos").update(rest).eq("id", editId);
+      res = await dbOp(
+        supabase.from("veiculos").update(rest).eq("id", editId),
+        "salvar veículo",
+      );
     } else {
-      await supabase.from("veiculos").insert(payload);
+      res = await dbOp(supabase.from("veiculos").insert(payload), "salvar veículo");
     }
     setSaving(false);
+    if (!res.ok) return;
     setModal(null);
     setEditId(null);
     await fetchVeiculos();
@@ -573,7 +595,12 @@ export default function Veiculos() {
   const handleSaveAbast = async (e) => {
     e.preventDefault();
     setSaving(true);
-    const litrosInput = Number(formAbast.litros) || 0;
+    const litrosInput = parseLitros(formAbast.litros);
+    if (litrosInput >= 1000) {
+      alert("Litros deve ser menor que 1000.");
+      setSaving(false);
+      return;
+    }
     const totalInput = Number(formAbast.valor_total_input) || 0;
     // Calcula R$/L automaticamente
     const litros = litrosInput;
@@ -590,17 +617,25 @@ export default function Veiculos() {
       valor_litro: valorLitro || 0,
       valor_total: valorTotal,
     };
+    let res;
     if (editAbastId) {
-      await supabase
-        .from("veiculos_abastecimentos")
-        .update(payload)
-        .eq("id", editAbastId);
+      res = await dbOp(
+        supabase
+          .from("veiculos_abastecimentos")
+          .update(payload)
+          .eq("id", editAbastId),
+        "salvar abastecimento",
+      );
     } else {
-      await supabase
-        .from("veiculos_abastecimentos")
-        .insert({ ...payload, user_id: user.id });
+      res = await dbOp(
+        supabase
+          .from("veiculos_abastecimentos")
+          .insert({ ...payload, user_id: user.id }),
+        "salvar abastecimento",
+      );
     }
     setSaving(false);
+    if (!res.ok) return;
     setModal(null);
     setEditAbastId(null);
     await fetchTab();
@@ -615,16 +650,24 @@ export default function Veiculos() {
       valor: Number(formManut.valor),
       user_id: user.id,
     };
+    let res;
     if (editManutId) {
       const { user_id: _uid, ...rest } = payload;
-      await supabase
-        .from("veiculos_manutencoes")
-        .update(rest)
-        .eq("id", editManutId);
+      res = await dbOp(
+        supabase
+          .from("veiculos_manutencoes")
+          .update(rest)
+          .eq("id", editManutId),
+        "salvar manutenção",
+      );
     } else {
-      await supabase.from("veiculos_manutencoes").insert(payload);
+      res = await dbOp(
+        supabase.from("veiculos_manutencoes").insert(payload),
+        "salvar manutenção",
+      );
     }
     setSaving(false);
+    if (!res.ok) return;
     setModal(null);
     setEditManutId(null);
     await fetchTab();
@@ -633,10 +676,14 @@ export default function Veiculos() {
   // ── Soft-delete ──
 
   const handleSoftDelete = async () => {
-    await supabase
-      .from(deleteTable)
-      .update({ deleted_at: new Date().toISOString() })
-      .eq("id", deleteId);
+    const { ok } = await dbOp(
+      supabase
+        .from(deleteTable)
+        .update({ deleted_at: new Date().toISOString() })
+        .eq("id", deleteId),
+      "excluir",
+    );
+    if (!ok) return;
     setModal(null);
     setDeleteId(null);
     setDeleteTable(null);
@@ -667,9 +714,9 @@ export default function Veiculos() {
   const openEditAbast = (item) => {
     setFormAbast({
       veiculo_id: item.veiculo_id || "",
-      data: item.data || today,
+      data: item.data || todaySP(),
       km: item.km ?? "",
-      litros: item.litros ?? "",
+      litros: item.litros != null ? String(item.litros).replace(".", ",") : "",
       valor_litro: item.valor_litro ?? "",
       valor_total_input: item.valor_total ?? "",
       combustivel: item.combustivel || "gasolina_comum",
@@ -683,7 +730,7 @@ export default function Veiculos() {
   const openEditManut = (item) => {
     setFormManut({
       veiculo_id: item.veiculo_id || "",
-      data: item.data || today,
+      data: item.data || todaySP(),
       km: item.km ?? "",
       descricao: item.descricao || "",
       valor: item.valor ?? "",
@@ -712,7 +759,7 @@ export default function Veiculos() {
     } else {
       setFormManut({
         veiculo_id: veiculos.find((v) => !v.venda_data)?.id ?? "",
-        data: today,
+        data: todaySP(),
         km: "",
         descricao: "",
         valor: "",
@@ -745,7 +792,9 @@ export default function Veiculos() {
           <button
             key={t.key}
             onClick={() => {
+              if (t.key === tab) return;
               setItems([]);
+              setLoading(true);
               setTab(t.key);
             }}
             className={`flex-1 flex items-center justify-center gap-1.5 text-sm font-medium rounded-lg py-2 transition-colors ${tab === t.key ? "bg-surface text-primary-500 shadow-sm" : "text-text-secondary hover:text-text-primary"}`}
@@ -970,15 +1019,17 @@ export default function Veiculos() {
             <div>
               <label className="block text-sm font-medium mb-1">Litros</label>
               <input
-                type="number"
-                step="0.01"
-                min="0"
+                type="text"
+                inputMode="decimal"
+                autoComplete="off"
                 value={formAbast.litros}
-                onChange={(e) =>
-                  setFormAbast({ ...formAbast, litros: e.target.value })
-                }
+                onChange={(e) => {
+                  // Só aceita número < 1000 com vírgula ou ponto (casas livres)
+                  if (LITROS_REGEX.test(e.target.value))
+                    setFormAbast({ ...formAbast, litros: e.target.value });
+                }}
                 className="w-full rounded-lg border border-border-custom bg-bg px-3 py-2 text-sm"
-                placeholder="Opcional"
+                placeholder="Ex: 38,4567"
               />
             </div>
           </div>

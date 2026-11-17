@@ -14,10 +14,10 @@ import {
   ChevronRight,
   Pencil,
 } from "lucide-react";
+import { todaySP, localISO } from "../lib/date";
+import { dbOp } from "../lib/db";
+import { fmtDate } from "../lib/format";
 
-const today = new Date().toLocaleDateString("sv-SE", {
-  timeZone: "America/Sao_Paulo",
-});
 
 const PRIORIDADE_COLORS = {
   baixa: "text-text-disabled",
@@ -27,7 +27,7 @@ const PRIORIDADE_COLORS = {
 
 const DIAS_SEMANA = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
 
-// Returns the start of a 7-day rolling window (today at position 3, i.e. 2 days back)
+// Returns the start of a 7-day rolling window (todaySP() at position 3, i.e. 2 days back)
 function getWindowStart(date) {
   const d = new Date(date);
   d.setDate(d.getDate() - 2);
@@ -41,7 +41,7 @@ function addDays(date, n) {
 }
 
 function fmtISO(date) {
-  return date.toISOString().slice(0, 10);
+  return localISO(date);
 }
 
 export default function Agendamentos() {
@@ -59,14 +59,15 @@ export default function Agendamentos() {
   const emptyForm = {
     titulo: "",
     descricao: "",
-    data: today,
+    data: todaySP(),
     hora: "16:00",
     prioridade: "normal",
   };
   const [form, setForm] = useState(emptyForm);
 
+  // O spinner é ligado na troca de filtro (setLoading(true) aqui, dentro do
+  // effect, causaria render em cascata)
   const fetchData = useCallback(async () => {
-    setLoading(true);
     let query = supabase
       .from("agendamentos")
       .select("*")
@@ -79,7 +80,14 @@ export default function Agendamentos() {
   }, [filtro]);
 
   useEffect(() => {
-    fetchData();
+    // Assíncrono (microtask) para não chamar setState de forma síncrona no effect
+    let ignore = false;
+    Promise.resolve().then(() => {
+      if (!ignore) fetchData();
+    });
+    return () => {
+      ignore = true;
+    };
   }, [fetchData]);
 
   const handleSave = async (e) => {
@@ -94,14 +102,22 @@ export default function Agendamentos() {
       prioridade: form.prioridade,
       agendado_para,
     };
+    let res;
     if (editingId) {
       delete payload.user_id;
-      await supabase.from("agendamentos").update(payload).eq("id", editingId);
+      res = await dbOp(
+        supabase.from("agendamentos").update(payload).eq("id", editingId),
+        "salvar agendamento",
+      );
     } else {
       payload.user_id = user.id;
-      await supabase.from("agendamentos").insert(payload);
+      res = await dbOp(
+        supabase.from("agendamentos").insert(payload),
+        "salvar agendamento",
+      );
     }
     setSaving(false);
+    if (!res.ok) return;
     setModal(null);
     setEditingId(null);
     setForm(emptyForm);
@@ -109,24 +125,27 @@ export default function Agendamentos() {
   };
 
   const toggleConcluido = async (id, atual) => {
-    await supabase
-      .from("agendamentos")
-      .update({ concluido: !atual })
-      .eq("id", id);
+    await dbOp(
+      supabase.from("agendamentos").update({ concluido: !atual }).eq("id", id),
+      "atualizar agendamento",
+    );
     fetchData();
   };
 
   const handleDelete = async () => {
-    await supabase
-      .from("agendamentos")
-      .update({ deleted_at: new Date().toISOString() })
-      .eq("id", deleteId);
+    const { ok } = await dbOp(
+      supabase
+        .from("agendamentos")
+        .update({ deleted_at: new Date().toISOString() })
+        .eq("id", deleteId),
+      "excluir agendamento",
+    );
+    if (!ok) return;
     setModal(null);
     setDeleteId(null);
     fetchData();
   };
 
-  const fmtDate = (d) => (d ? new Date(d).toLocaleDateString("pt-BR") : "—");
 
   // Derive date string (yyyy-MM-dd) from agendado_para
   const getItemDate = (item) =>
@@ -134,8 +153,8 @@ export default function Agendamentos() {
   const getItemHora = (item) =>
     item.agendado_para ? item.agendado_para.slice(11, 16) : "";
 
-  const isAtrasado = (item) => !item.concluido && getItemDate(item) < today;
-  const isHoje = (item) => getItemDate(item) === today;
+  const isAtrasado = (item) => !item.concluido && getItemDate(item) < todaySP();
+  const isHoje = (item) => getItemDate(item) === todaySP();
 
   // ── Agenda helpers ──
   const windowStart = useMemo(() => {
@@ -151,7 +170,7 @@ export default function Agendamentos() {
         dayName: DIAS_SEMANA[d.getDay()],
         dayNum: d.getDate(),
         month: d.toLocaleDateString("pt-BR", { month: "short" }),
-        isToday: fmtISO(d) === today,
+        isToday: fmtISO(d) === todaySP(),
       };
     });
   }, [windowStart]);
@@ -200,7 +219,7 @@ export default function Agendamentos() {
 
   const openAdd = (prefillDate) => {
     setEditingId(null);
-    setForm({ ...emptyForm, data: prefillDate || today });
+    setForm({ ...emptyForm, data: prefillDate || todaySP() });
     setModal("add");
   };
 
@@ -308,7 +327,11 @@ export default function Agendamentos() {
           {["pendentes", "todos"].map((f) => (
             <button
               key={f}
-              onClick={() => setFiltro(f)}
+              onClick={() => {
+                if (f === filtro) return;
+                setLoading(true);
+                setFiltro(f);
+              }}
               className={`text-xs font-medium rounded-full px-3 py-1.5 border transition-colors capitalize ${filtro === f ? "bg-accent-500 text-white border-accent-500" : "border-border-custom text-text-secondary hover:bg-surface-alt"}`}
             >
               {f}

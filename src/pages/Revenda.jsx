@@ -1,4 +1,11 @@
-import { useEffect, useState, useCallback } from "react";
+import {
+  useEffect,
+  useState,
+  useCallback,
+  useRef,
+  lazy,
+  Suspense,
+} from "react";
 import { supabase } from "../lib/supabaseClient";
 import { useAuth } from "../contexts/AuthContext";
 import { useBottomTabs } from "../contexts/BottomTabsContext";
@@ -10,326 +17,26 @@ import {
   Trash2,
   Store,
   ArrowDownCircle,
-  ArrowUpCircle,
   Tag,
   ChevronDown,
-  ChevronUp,
-  CheckCircle2,
-  Clock,
   MapPin,
-  Repeat,
   Truck,
   Pencil,
   AlertTriangle,
   X,
   Wallet,
-  DollarSign,
-  BarChart3,
+  Receipt,
 } from "lucide-react";
-import Gerencial from "./Revenda/Abas/Gerencial";
-
-const today = new Date().toLocaleDateString("sv-SE", {
-  timeZone: "America/Sao_Paulo",
-});
-
-// ── Helper: supabase mutation with error handling ──
-const cleanPhone = (val) => val.replace(/^\+55\s?/, "").replace(/[\s-]/g, "");
-
-const dbOp = async (query, label = "Operação") => {
-  const res = await query;
-  if (res.error) {
-    console.error(`[${label}]`, res.error);
-    alert(`Erro ao ${label}: ${res.error.message}`);
-    return { ok: false, error: res.error, data: res.data };
-  }
-  return { ok: true, data: res.data };
-};
-
-const TABS = [
-  { key: "entradas", label: "Entradas", icon: ArrowDownCircle },
-  { key: "saidas", label: "Saídas", icon: ArrowUpCircle },
-  { key: "gerencial", label: "Gerencial", icon: BarChart3 },
-  { key: "cadastro", label: "Cadastro", icon: Package },
-];
-
-const DIAS_SEMANA = [
-  { key: "segunda", label: "Segunda" },
-  { key: "terca", label: "Terça" },
-  { key: "quarta", label: "Quarta" },
-  { key: "quinta", label: "Quinta" },
-  { key: "sexta", label: "Sexta" },
-  { key: "sabado", label: "Sábado" },
-  { key: "domingo", label: "Domingo" },
-];
-
-const fmtMoney = (v) =>
-  v != null && v !== ""
-    ? `R$ ${Number(v).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`
-    : "—";
-
-const fmtDate = (d) =>
-  d ? new Date(d + "T00:00:00").toLocaleDateString("pt-BR") : "—";
-
-// ── Produto Card ────────────
-
-function ProdutoCard({ produto, onEdit, onDelete }) {
-  return (
-    <div
-      onClick={() => onEdit(produto)}
-      className="bg-surface rounded-xl border border-border-custom p-4 flex items-center justify-between cursor-pointer hover:bg-surface-alt/50 transition-colors"
-    >
-      <div className="flex items-center gap-3">
-        <div className="h-9 w-9 rounded-lg bg-accent-50 flex items-center justify-center shrink-0">
-          <Package className="text-accent-500" size={16} />
-        </div>
-        <p className="font-semibold text-sm">{produto.nome}</p>
-      </div>
-      <div className="flex items-center gap-1">
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            onEdit(produto);
-          }}
-          className="p-2 rounded-lg hover:bg-surface-alt text-text-disabled hover:text-primary-500 transition-colors"
-        >
-          <Pencil size={15} />
-        </button>
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            onDelete(produto.id);
-          }}
-          className="p-2 rounded-lg hover:bg-surface-alt text-text-disabled hover:text-error transition-colors"
-        >
-          <Trash2 size={15} />
-        </button>
-      </div>
-    </div>
-  );
-}
-
-// ── Movimentação Card ──────────────────────────────────
-
-function MovCard({
-  mov,
-  pdvs,
-  produtos,
-  fornecedores,
-  onEdit,
-  onDelete,
-  onPagamento,
-  initialOpen,
-}) {
-  const [open, setOpen] = useState(initialOpen || false);
-  const isEntrada = mov._tipo === "entrada";
-  const pdv = pdvs.find((p) => p.id === mov.pdv_id);
-  const forn = fornecedores.find((f) => f.id === mov.fornecedor_id);
-  const sp = mov.status_pagamento; // pendente | parcial | pago
-  const itens = mov.itens || [];
-
-  // Summaries (pre-calculated via DB trigger, fallback to itens if needed)
-  const totalQty =
-    mov.total_qty != null
-      ? Number(mov.total_qty)
-      : itens.reduce((s, i) => s + (i.quantidade || 0), 0);
-  const totalCompra =
-    mov.total_compra != null
-      ? Number(mov.total_compra)
-      : itens.reduce(
-          (s, i) => s + (i.quantidade || 0) * (i.valor_compra_unitario || 0),
-          0,
-        );
-  const totalVenda =
-    (mov.total_venda != null
-      ? Number(mov.total_venda)
-      : itens.reduce(
-          (s, i) => s + (i.quantidade || 0) * (i.valor_venda_unitario || 0),
-          0,
-        )) + Number(mov.frete || 0);
-  const Icon = isEntrada ? ArrowDownCircle : ArrowUpCircle;
-  const statusColors = isEntrada
-    ? {
-        color: "text-accent-500",
-        bg: "bg-accent-50",
-        border: "border-accent-500/30",
-      }
-    : mov.is_perda
-      ? {
-          color: "text-neutral-400",
-          bg: "bg-neutral-100",
-          border: "border-neutral-300",
-        }
-      : sp === "pago"
-        ? {
-            color: "text-success",
-            bg: "bg-success/10",
-            border: "border-success/30",
-          }
-        : sp === "parcial"
-          ? {
-              color: "text-warning",
-              bg: "bg-warning/10",
-              border: "border-warning/30",
-            }
-          : {
-              color: "text-error/70",
-              bg: "bg-error/5",
-              border: "border-error/20",
-            };
-  const { color: colorClass, bg: bgClass, border: borderClass } = statusColors;
-
-  return (
-    <div
-      id={`mov-${mov.id}`}
-      className={`bg-surface rounded-xl border overflow-hidden transition-colors ${borderClass}`}
-    >
-      <button
-        onClick={() => setOpen(!open)}
-        className="w-full flex items-center gap-3 p-4 text-left"
-      >
-        <div
-          className={`h-9 w-9 rounded-lg flex items-center justify-center shrink-0 ${bgClass}`}
-        >
-          <Icon className={colorClass} size={16} />
-        </div>
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 flex-wrap">
-            {!isEntrada && pdv && (
-              <span className="text-xs font-medium text-text-primary">
-                {pdv.nome}
-              </span>
-            )}
-            {isEntrada && forn && (
-              <span className="text-xs font-medium text-text-primary">
-                {forn.nome}
-              </span>
-            )}
-            {!isEntrada && mov.is_perda && (
-              <span className="text-[10px] font-bold rounded px-1.5 py-0.5 bg-error/10 text-error flex items-center gap-0.5">
-                <AlertTriangle size={10} /> PERDA
-              </span>
-            )}
-          </div>
-          <p className="text-xs text-text-disabled">
-            {fmtDate(mov.data)}
-            {" · "}
-            {totalQty} itens · {fmtMoney(isEntrada ? totalCompra : totalVenda)}
-          </p>
-        </div>
-        {open ? (
-          <ChevronUp size={16} className="text-text-disabled" />
-        ) : (
-          <ChevronDown size={16} className="text-text-disabled" />
-        )}
-      </button>
-
-      {open && (
-        <div className="border-t border-border-custom px-4 pb-3 pt-2 space-y-1.5">
-          {/* Items list */}
-          {itens.length > 0 && (
-            <div className="space-y-1">
-              <p className="text-[10px] text-text-disabled font-medium uppercase">
-                Itens
-              </p>
-              {itens.map((item, i) => {
-                const prod = produtos.find((n) => n.id === item.produto_id);
-                return (
-                  <div
-                    key={i}
-                    className="flex items-center justify-between text-xs bg-surface-alt rounded-lg px-2.5 py-1.5"
-                  >
-                    <span className="text-text-primary font-medium">
-                      {prod?.nome || "—"}
-                    </span>
-                    <span className="text-text-secondary">
-                      {item.quantidade}x {fmtMoney(item.valor_compra_unitario)}
-                      {!isEntrada && item.valor_venda_unitario != null && (
-                        <> → {fmtMoney(item.valor_venda_unitario)}</>
-                      )}
-                    </span>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-          <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
-            <span className="text-text-disabled">Qtd total</span>
-            <span className="text-text-primary font-medium text-right">
-              {totalQty}
-            </span>
-            <span className="text-text-disabled">Compra total</span>
-            <span className="text-text-primary font-medium text-right">
-              {fmtMoney(totalCompra)}
-            </span>
-            {!isEntrada && (
-              <>
-                <span className="text-text-disabled">Venda total</span>
-                <span className="text-text-primary font-medium text-right">
-                  {fmtMoney(totalVenda)}
-                </span>
-                <span className="text-text-disabled">Situação</span>
-                <span
-                  className={`font-medium text-right ${sp === "pago" ? "text-success" : sp === "parcial" ? "text-warning" : "text-error/70"}`}
-                >
-                  {sp === "pago"
-                    ? "Pago"
-                    : sp === "parcial"
-                      ? "Parcial"
-                      : "Pendente"}
-                </span>
-              </>
-            )}
-            {isEntrada && forn && (
-              <>
-                <span className="text-text-disabled">Fornecedor</span>
-                <span className="text-text-primary font-medium text-right">
-                  {forn.nome}
-                </span>
-              </>
-            )}
-            {isEntrada && mov.nota_fiscal && (
-              <>
-                <span className="text-text-disabled">Nota fiscal</span>
-                <span className="text-text-primary font-medium text-right">
-                  {mov.nota_fiscal}
-                </span>
-              </>
-            )}
-          </div>
-          {mov.observacao && (
-            <p className="text-xs text-text-disabled pt-1">{mov.observacao}</p>
-          )}
-          <div className="flex items-center justify-between pt-1">
-            <div className="flex items-center gap-3">
-              <button
-                onClick={() => onEdit(mov)}
-                className="flex items-center gap-1 text-xs text-primary-500 hover:underline font-medium"
-              >
-                <Pencil size={12} /> Editar
-              </button>
-              <button
-                onClick={() => onDelete(mov.id)}
-                className="flex items-center gap-1 text-xs text-text-disabled hover:text-error transition-colors"
-              >
-                <Trash2 size={12} /> Remover
-              </button>
-            </div>
-            <button
-              onClick={() => onPagamento(mov)}
-              className="flex items-center gap-1 text-xs text-accent-500 hover:underline font-medium"
-            >
-              <DollarSign size={12} /> Pagamento
-            </button>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ══════════════════════════════════════════════════════════
-// Página principal
-// ══════════════════════════════════════════════════════════
+import Spinner from "../components/Spinner";
+// Gerencial (com a biblioteca de gráficos) só é baixado ao abrir a aba
+const Gerencial = lazy(() => import("./Revenda/Abas/Gerencial"));
+import { dbOp } from "../lib/db";
+import CobrancaModal from "./Revenda/CobrancaModal";
+import { todaySP } from "../lib/date";
+import { calcRestante, calcStatusPagamento } from "../lib/money";
+import ProdutoCard from "./Revenda/ProdutoCard";
+import MovCard from "./Revenda/MovCard";
+import { cleanPhone, TABS, DIAS_SEMANA } from "./Revenda/constants";
 
 export default function Revenda() {
   const SAIDAS_PAGE_SIZE = 50;
@@ -368,7 +75,7 @@ export default function Revenda() {
   const [formTransacao, setFormTransacao] = useState({
     forma_pagamento_id: "",
     valor: "",
-    data: today,
+    data: todaySP(),
     observacao: "",
   });
 
@@ -406,14 +113,14 @@ export default function Revenda() {
   const [showNaturezaSugg, setShowNaturezaSugg] = useState(false);
 
   const [formEntrada, setFormEntrada] = useState({
-    data: today,
+    data: todaySP(),
     fornecedor_id: "",
     nota_fiscal: "",
     observacao: "",
     itens: [{ produto_id: "", quantidade: "", valor_compra_unitario: "" }],
   });
   const [formSaida, setFormSaida] = useState({
-    data: today,
+    data: todaySP(),
     pdv_id: "",
     observacao: "",
     frete: "",
@@ -531,7 +238,11 @@ export default function Revenda() {
     setPdvs(enriched);
   }, []);
 
+  // Ignora respostas de buscas antigas (troca rápida de aba/filtro)
+  const fetchReqRef = useRef(0);
+
   const fetchMovimentacoes = useCallback(async () => {
+    const reqId = ++fetchReqRef.current;
     const fetchEntradas =
       tab === "saidas"
         ? Promise.resolve({ data: [] })
@@ -543,7 +254,7 @@ export default function Revenda() {
             .is("deleted_at", null)
             .order("data", { ascending: false })
             .limit(100);
-    const fetchSaidas =
+    let fetchSaidas =
       tab === "entradas"
         ? Promise.resolve({ data: [] })
         : supabase
@@ -553,11 +264,16 @@ export default function Revenda() {
             )
             .is("deleted_at", null)
             .order("data", { ascending: false })
+            .order("id")
             .range(0, SAIDAS_PAGE_SIZE - 1);
+    if (tab === "saidas" && saidaPdvFiltro) {
+      fetchSaidas = fetchSaidas.eq("pdv_id", saidaPdvFiltro);
+    }
     const [{ data: entradas }, { data: saidas }] = await Promise.all([
       fetchEntradas,
       fetchSaidas,
     ]);
+    if (reqId !== fetchReqRef.current) return;
     const all = [
       ...(entradas || []).map((e) => ({
         ...e,
@@ -592,20 +308,29 @@ export default function Revenda() {
       setSaidasOffset(0);
       setSaidasHasMore(false);
     }
-  }, [tab]);
+  }, [tab, saidaPdvFiltro]);
 
   const handleListarMaisSaidas = useCallback(async () => {
     if (loadingMoreSaidas || !saidasHasMore || tab !== "saidas") return;
 
     setLoadingMoreSaidas(true);
-    const { data: saidas } = await supabase
+    const reqId = fetchReqRef.current;
+    let query = supabase
       .from("revenda_mov_saidas")
       .select(
         "id, data, pdv_id, observacao, status_pagamento, is_perda, frete, total_qty, total_compra, total_venda, created_at",
       )
       .is("deleted_at", null)
       .order("data", { ascending: false })
+      .order("id")
       .range(saidasOffset, saidasOffset + SAIDAS_PAGE_SIZE - 1);
+    if (saidaPdvFiltro) query = query.eq("pdv_id", saidaPdvFiltro);
+    const { data: saidas } = await query;
+    // Filtro/aba mudou durante a busca: descarta
+    if (reqId !== fetchReqRef.current) {
+      setLoadingMoreSaidas(false);
+      return;
+    }
 
     const novasSaidas = (saidas || []).map((s) => ({
       ...s,
@@ -633,7 +358,7 @@ export default function Revenda() {
     setSaidasOffset((prev) => prev + quantidadeNovas);
     setSaidasHasMore(quantidadeNovas === SAIDAS_PAGE_SIZE);
     setLoadingMoreSaidas(false);
-  }, [loadingMoreSaidas, saidasHasMore, saidasOffset, tab]);
+  }, [loadingMoreSaidas, saidasHasMore, saidasOffset, tab, saidaPdvFiltro]);
 
   // Effect 1: Static data (runs once on mount)
   useEffect(() => {
@@ -656,7 +381,7 @@ export default function Revenda() {
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tab]);
+  }, [tab, saidaPdvFiltro]);
 
   useEffect(() => {
     if (tab !== "saidas") setSaidaPdvFiltro("");
@@ -999,6 +724,7 @@ export default function Revenda() {
 
   const handleSaveEntrada = async (e) => {
     e.preventDefault();
+    if (saving) return; // clique duplo
     setSaving(true);
     const payload = {
       data: formEntrada.data,
@@ -1006,68 +732,36 @@ export default function Revenda() {
       nota_fiscal: formEntrada.nota_fiscal || null,
       observacao: formEntrada.observacao || null,
     };
-    let movId = editingMovId;
-    if (editingMovId) {
-      const { ok } = await dbOp(
-        supabase
-          .from("revenda_mov_entradas")
-          .update(payload)
-          .eq("id", editingMovId),
-        "salvar entrada",
-      );
-      if (!ok) {
-        setSaving(false);
-        return;
-      }
-      await dbOp(
-        supabase
-          .from("revenda_mov_entradas_itens")
-          .delete()
-          .eq("mov_id", editingMovId),
-        "limpar itens",
-      );
-    } else {
-      const { ok, data: inserted } = await dbOp(
-        supabase
-          .from("revenda_mov_entradas")
-          .insert({ ...payload, user_id: user.id })
-          .select("id")
-          .single(),
-        "salvar entrada",
-      );
-      if (!ok) {
-        setSaving(false);
-        return;
-      }
-      movId = inserted?.id;
-    }
-    // Insert items
-    if (movId) {
-      const itensPayload = formEntrada.itens
-        .filter((i) => i.produto_id && i.quantidade)
-        .map((i) => ({
-          mov_id: movId,
+    const itensValidos = formEntrada.itens.filter(
+      (i) => i.produto_id && i.quantidade,
+    );
+    // Cabeçalho + itens numa transação só (fn_salvar_entrada, migration 046)
+    const { ok } = await dbOp(
+      supabase.rpc("fn_salvar_entrada", {
+        p_id: editingMovId || null,
+        p_dados: payload,
+        p_itens: itensValidos.map((i) => ({
           produto_id: i.produto_id,
           quantidade: Number(i.quantidade),
           valor_compra_unitario: Number(i.valor_compra_unitario) || null,
-          user_id: user.id,
-        }));
-      if (itensPayload.length > 0) {
-        await dbOp(
-          supabase.from("revenda_mov_entradas_itens").insert(itensPayload),
-          "salvar itens entrada",
-        );
-      }
+        })),
+      }),
+      "salvar entrada",
+    );
+    if (!ok) {
+      // Mantém o modal aberto com os dados digitados
+      setSaving(false);
+      return;
     }
     // Update custo_unitario on revenda_produtos (non-Gelo products)
-    for (const item of formEntrada.itens) {
-      if (item.valor_compra_unitario != null && item.produto_id) {
+    for (const item of itensValidos) {
+      if (Number(item.valor_compra_unitario) > 0) {
         const prod = naturezas.find((n) => n.id === item.produto_id);
         if (prod && prod.natureza !== "Gelo") {
           await dbOp(
             supabase
               .from("revenda_produtos")
-              .update({ custo_unitario: item.valor_compra_unitario })
+              .update({ custo_unitario: Number(item.valor_compra_unitario) })
               .eq("id", item.produto_id),
             "atualizar custo produto",
           );
@@ -1094,40 +788,33 @@ export default function Revenda() {
       return;
     }
 
+    if (saving) return; // clique duplo
     setSaving(true);
     const isPerda = forcePerda === true;
     if (totalQty < 0 && !isPerda && !editingMovId) {
-      // Devolução → criar ENTRADA com quantidade positiva
-      const { ok, data: inserted } = await dbOp(
-        supabase
-          .from("revenda_mov_entradas")
-          .insert({
+      // Devolução → criar ENTRADA com quantidade positiva (atômico)
+      const { ok } = await dbOp(
+        supabase.rpc("fn_salvar_entrada", {
+          p_id: null,
+          p_dados: {
             data: formSaida.data,
             observacao: formSaida.observacao
               ? `Devolução: ${formSaida.observacao}`
               : "Devolução de PDV",
-            user_id: user.id,
-          })
-          .select("id")
-          .single(),
+          },
+          p_itens: formSaida.itens
+            .filter((i) => i.produto_id && i.quantidade)
+            .map((i) => ({
+              produto_id: i.produto_id,
+              quantidade: Math.abs(Number(i.quantidade)),
+              valor_compra_unitario: Number(i.valor_compra_unitario) || null,
+            })),
+        }),
         "salvar devolução",
       );
-      if (ok && inserted?.id) {
-        const itensPayload = formSaida.itens
-          .filter((i) => i.produto_id && i.quantidade)
-          .map((i) => ({
-            mov_id: inserted.id,
-            produto_id: i.produto_id,
-            quantidade: Math.abs(Number(i.quantidade)),
-            valor_compra_unitario: Number(i.valor_compra_unitario) || null,
-            user_id: user.id,
-          }));
-        if (itensPayload.length > 0) {
-          await dbOp(
-            supabase.from("revenda_mov_entradas_itens").insert(itensPayload),
-            "salvar itens devolu\u00e7\u00e3o",
-          );
-        }
+      if (!ok) {
+        setSaving(false);
+        return;
       }
     } else {
       // Normal ou perda
@@ -1142,62 +829,30 @@ export default function Revenda() {
         is_perda: isPerda,
         frete: Number(formSaida.frete) || 0,
       };
-      let movId = editingMovId;
-      if (editingMovId) {
-        const { ok } = await dbOp(
-          supabase
-            .from("revenda_mov_saidas")
-            .update(payload)
-            .eq("id", editingMovId),
-          "salvar sa\u00edda",
-        );
-        if (!ok) {
-          setSaving(false);
-          return;
-        }
-        await dbOp(
-          supabase
-            .from("revenda_mov_saidas_itens")
-            .delete()
-            .eq("mov_id", editingMovId),
-          "limpar itens",
-        );
-      } else {
-        const { ok, data: inserted } = await dbOp(
-          supabase
-            .from("revenda_mov_saidas")
-            .insert({ ...payload, user_id: user.id })
-            .select("id")
-            .single(),
-          "salvar sa\u00edda",
-        );
-        if (!ok) {
-          setSaving(false);
-          return;
-        }
-        movId = inserted?.id;
-      }
-      if (movId) {
-        const itensPayload = formSaida.itens
-          .filter((i) => i.produto_id && i.quantidade)
-          .map((i) => ({
-            mov_id: movId,
-            produto_id: i.produto_id,
-            quantidade: isPerda
-              ? Math.abs(Number(i.quantidade))
-              : Number(i.quantidade),
-            valor_compra_unitario: Number(i.valor_compra_unitario) || null,
-            valor_venda_unitario: isPerda
-              ? null
-              : Number(i.valor_venda_unitario) || null,
-            user_id: user.id,
-          }));
-        if (itensPayload.length > 0) {
-          await dbOp(
-            supabase.from("revenda_mov_saidas_itens").insert(itensPayload),
-            "salvar itens sa\u00edda",
-          );
-        }
+      // Cabeçalho + itens numa transação só (fn_salvar_saida, migration 046)
+      const { ok } = await dbOp(
+        supabase.rpc("fn_salvar_saida", {
+          p_id: editingMovId || null,
+          p_dados: payload,
+          p_itens: formSaida.itens
+            .filter((i) => i.produto_id && i.quantidade)
+            .map((i) => ({
+              produto_id: i.produto_id,
+              quantidade: isPerda
+                ? Math.abs(Number(i.quantidade))
+                : Number(i.quantidade),
+              valor_compra_unitario: Number(i.valor_compra_unitario) || null,
+              valor_venda_unitario: isPerda
+                ? null
+                : Number(i.valor_venda_unitario) || null,
+            })),
+        }),
+        "salvar saída",
+      );
+      if (!ok) {
+        // Mantém o modal aberto com os dados digitados
+        setSaving(false);
+        return;
       }
     }
     setSaving(false);
@@ -1287,11 +942,11 @@ export default function Revenda() {
       ? Number(mov.total_compra || 0)
       : Number(mov.total_venda || 0) + Number(mov.frete || 0);
     const totalPago = (data || []).reduce((s, t) => s + Number(t.valor), 0);
-    const restante = Math.max(0, totalMov - totalPago);
+    const restante = calcRestante(totalMov, totalPago);
     setFormTransacao({
       forma_pagamento_id: dinheiro?.id ?? formasPagamento[0]?.id ?? "",
       valor: restante > 0 ? restante.toFixed(2) : "",
-      data: mov.data || today,
+      data: mov.data || todaySP(),
       observacao: "",
     });
     setModal("pagamento");
@@ -1299,7 +954,7 @@ export default function Revenda() {
 
   const handleSaveTransacao = async (e) => {
     e.preventDefault();
-    if (!pagamentoMov) return;
+    if (!pagamentoMov || saving) return;
     setSaving(true);
     const table =
       pagamentoMov._tipo === "entrada"
@@ -1335,15 +990,10 @@ export default function Revenda() {
       ? Number(pagamentoMov.total_compra || 0)
       : Number(pagamentoMov.total_venda || 0) + Number(pagamentoMov.frete || 0);
     const totalPago2 = (data || []).reduce((s, t) => s + Number(t.valor), 0);
-    const restante2 = Math.max(0, totalMov2 - totalPago2);
-    // Atualiza status_pagamento na saída
+    const restante2 = calcRestante(totalMov2, totalPago2);
+    // Atualiza status_pagamento na saída (o trigger da 045 também recalcula)
     if (pagamentoMov._tipo === "saida") {
-      const newStatus =
-        totalPago2 <= 0
-          ? "pendente"
-          : totalPago2 >= totalMov2
-            ? "pago"
-            : "parcial";
+      const newStatus = calcStatusPagamento(totalMov2, totalPago2);
       await supabase
         .from("revenda_mov_saidas")
         .update({ status_pagamento: newStatus })
@@ -1352,15 +1002,31 @@ export default function Revenda() {
     setFormTransacao({
       forma_pagamento_id: dinheiro?.id ?? formasPagamento[0]?.id ?? "",
       valor: restante2 > 0 ? restante2.toFixed(2) : "",
-      data: pagamentoMov?.data || today,
+      data: pagamentoMov?.data || todaySP(),
       observacao: "",
     });
     setSaving(false);
     await fetchMovimentacoes();
   };
 
-  const deleteTransacao = async (id) => {
-    if (!pagamentoMov) return;
+  const [deletingTransacaoId, setDeletingTransacaoId] = useState(null);
+
+  const deleteTransacao = async (t) => {
+    if (!pagamentoMov || deletingTransacaoId) return;
+    const valorFmt = Number(t.valor).toLocaleString("pt-BR", {
+      style: "currency",
+      currency: "BRL",
+    });
+    if (!window.confirm(`Remover o pagamento de ${valorFmt}?`)) return;
+    setDeletingTransacaoId(t.id);
+    try {
+      await removerTransacao(t.id);
+    } finally {
+      setDeletingTransacaoId(null);
+    }
+  };
+
+  const removerTransacao = async (id) => {
     const table =
       pagamentoMov._tipo === "entrada"
         ? "revenda_entrada_transacoes"
@@ -1380,12 +1046,7 @@ export default function Revenda() {
       const totalMov =
         Number(pagamentoMov.total_venda || 0) + Number(pagamentoMov.frete || 0);
       const totalPago = (data || []).reduce((s, t) => s + Number(t.valor), 0);
-      const newStatus =
-        totalPago <= 0
-          ? "pendente"
-          : totalPago >= totalMov
-            ? "pago"
-            : "parcial";
+      const newStatus = calcStatusPagamento(totalMov, totalPago);
       await supabase
         .from("revenda_mov_saidas")
         .update({ status_pagamento: newStatus })
@@ -1514,7 +1175,7 @@ export default function Revenda() {
   const openAddEntrada = () => {
     setEditingMovId(null);
     setFormEntrada({
-      data: today,
+      data: todaySP(),
       fornecedor_id: fornecedores[0]?.id ?? "",
       nota_fiscal: "",
       observacao: "",
@@ -1532,7 +1193,7 @@ export default function Revenda() {
   const openAddSaida = () => {
     setEditingMovId(null);
     setFormSaida({
-      data: today,
+      data: todaySP(),
       pdv_id: pdvs[0]?.id ?? "",
       observacao: "",
       frete: "",
@@ -1568,7 +1229,7 @@ export default function Revenda() {
 
     if (isEntrada) {
       setFormEntrada({
-        data: m.data || today,
+        data: m.data || todaySP(),
         fornecedor_id: m.fornecedor_id || "",
         nota_fiscal: m.nota_fiscal || "",
         observacao: m.observacao || "",
@@ -1585,7 +1246,7 @@ export default function Revenda() {
       setModal("entrada");
     } else {
       setFormSaida({
-        data: m.data || today,
+        data: m.data || todaySP(),
         pdv_id: m.pdv_id || "",
         observacao: m.observacao || "",
         frete: m.frete ? String(m.frete) : "",
@@ -1613,10 +1274,8 @@ export default function Revenda() {
 
   // ── Render ──
 
-  const movimentacoesExibidas =
-    tab === "saidas" && saidaPdvFiltro
-      ? movimentacoes.filter((m) => m.pdv_id === saidaPdvFiltro)
-      : movimentacoes;
+  // O filtro de PDV já é aplicado na consulta ao banco (fetchMovimentacoes)
+  const movimentacoesExibidas = movimentacoes;
 
   return (
     <div className="space-y-4 -mx-2">
@@ -1624,7 +1283,7 @@ export default function Revenda() {
       <div className="flex items-center justify-between min-h-[40px]">
         <div className="flex items-center gap-2 shrink-0">
           <Package className="text-accent-500" size={22} />
-          <h1 className="text-xl font-bold text-text-primary">Revenda</h1>
+          <h1 className="text-xl font-bold text-text-primary">Movimentações</h1>
         </div>
         <div className="flex gap-2">
           {tab === "entradas" && (
@@ -1641,6 +1300,14 @@ export default function Revenda() {
               className="flex items-center gap-1.5 bg-primary-500 hover:bg-primary-600 text-white text-sm font-medium rounded-lg px-3 py-2 transition-colors"
             >
               <Plus size={16} /> Saída
+            </button>
+          )}
+          {tab === "gerencial" && (
+            <button
+              onClick={() => setModal("cobranca")}
+              className="flex items-center gap-1.5 bg-primary-500 hover:bg-primary-600 text-white text-sm font-medium rounded-lg px-3 py-2 transition-colors"
+            >
+              <Receipt size={16} /> Cobrança
             </button>
           )}
           {tab === "cadastro" && cadastroSub && (
@@ -1712,7 +1379,9 @@ export default function Revenda() {
           <div className="animate-spin h-8 w-8 border-3 border-primary-500 border-t-transparent rounded-full" />
         </div>
       ) : tab === "gerencial" ? (
-        <Gerencial embedded />
+        <Suspense fallback={<Spinner />}>
+          <Gerencial embedded />
+        </Suspense>
       ) : tab === "cadastro" ? (
         !cadastroSub ? (
           /* Cadastro menu */
@@ -2139,6 +1808,12 @@ export default function Revenda() {
       {/* ══════════════════════════════════════════════════ */}
 
       {/* Novo Produto */}
+      <CobrancaModal
+        open={modal === "cobranca"}
+        onClose={() => setModal(null)}
+        pdvs={pdvs}
+      />
+
       <Modal
         open={modal === "natureza"}
         onClose={() => setModal(null)}
@@ -3221,6 +2896,7 @@ export default function Revenda() {
               setPerdaPrompt(false);
               handleSaveSaida(null, true);
             }}
+            disabled={saving}
             className="w-full flex items-center justify-center gap-2 bg-error/10 hover:bg-error/20 text-error font-medium rounded-lg px-4 py-2.5 transition-colors"
           >
             <AlertTriangle size={16} /> Registrar como Perda
@@ -3230,6 +2906,7 @@ export default function Revenda() {
               setPerdaPrompt(false);
               handleSaveSaida(null, false);
             }}
+            disabled={saving}
             className="w-full flex items-center justify-center gap-2 bg-success/10 hover:bg-success/20 text-success font-medium rounded-lg px-4 py-2.5 transition-colors"
           >
             <ArrowDownCircle size={16} /> Devolver ao Estoque
@@ -3308,7 +2985,7 @@ export default function Revenda() {
               (s, t) => s + Number(t.valor),
               0,
             );
-            const restante = totalMov - totalPago;
+            const restante = calcRestante(totalMov, totalPago);
             return (
               <div className="space-y-4">
                 {/* Detalhes do pedido */}
@@ -3417,8 +3094,10 @@ export default function Revenda() {
                             </span>
                           </div>
                           <button
-                            onClick={() => deleteTransacao(t.id)}
-                            className="p-1 text-text-disabled hover:text-error"
+                            onClick={() => deleteTransacao(t)}
+                            disabled={deletingTransacaoId === t.id}
+                            aria-label="Remover pagamento"
+                            className="p-2 -m-1 text-text-disabled hover:text-error disabled:opacity-40"
                           >
                             <Trash2 size={14} />
                           </button>

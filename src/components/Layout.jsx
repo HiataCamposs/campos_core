@@ -1,4 +1,5 @@
-import { useState, useEffect } from "react";
+import Spinner from "./Spinner";
+import { useState, useEffect, Suspense } from "react";
 import { Outlet, NavLink } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
 import { version as APP_VERSION } from "../../package.json";
@@ -21,7 +22,7 @@ import {
 const NAV_ITEMS = [
   { to: "/", label: "Início", icon: Home, end: true },
   { to: "/gelo", label: "Gelo", icon: Snowflake },
-  { to: "/revenda", label: "Revenda", icon: Package },
+  { to: "/revenda", label: "Movimentações", icon: Package },
   { to: "/reposicao", label: "Reposição", icon: Zap },
   { to: "/veiculos", label: "Veículos", icon: Car },
   { to: "/agendamentos", label: "Agendamentos", icon: Bell },
@@ -190,7 +191,9 @@ function LayoutInner() {
 
       {/* ── Main content ── */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 py-6 pb-24 md:pb-6 md:ml-56">
-        <Outlet />
+        <Suspense fallback={<Spinner />}>
+          <Outlet />
+        </Suspense>
       </main>
 
       {/* ── Bottom bar (page tabs) ── */}

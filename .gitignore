@@ -26,3 +26,7 @@ dist-ssr
 # Env
 .env
 .env.*
+
+# Script destrutivo (apaga o banco). Mantido só localmente, fora do git.
+supabase_reset.sql
+!.env.example

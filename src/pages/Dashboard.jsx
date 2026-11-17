@@ -1,6 +1,5 @@
 import { useEffect, useState, useCallback } from "react";
 import { supabase } from "../lib/supabaseClient";
-import { useAuth } from "../contexts/AuthContext";
 import { Link } from "react-router-dom";
 import {
   Snowflake,
@@ -11,14 +10,13 @@ import {
   ArrowRight,
   CalendarClock,
 } from "lucide-react";
+import { todaySP, daysAgoSP } from "../lib/date";
+import { fetchAll } from "../lib/db";
+import { fmtDate } from "../lib/format";
+import BackupCard from "../components/BackupCard";
 
-const today = new Date().toISOString().slice(0, 10);
-const sevenDaysAgo = new Date(Date.now() - 7 * 86400000)
-  .toISOString()
-  .slice(0, 10);
 
 export default function Dashboard() {
-  const { user } = useAuth();
   const [stats, setStats] = useState({
     geloHoje: 0,
     geloVendasHoje: 0,
@@ -37,7 +35,6 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
 
   const fetchStats = useCallback(async () => {
-    setLoading(true);
 
     const [
       { count: geloHoje },
@@ -57,12 +54,12 @@ export default function Dashboard() {
         .from("gelo_producao")
         .select("*", { count: "exact", head: true })
         .is("deleted_at", null)
-        .eq("data", today),
+        .eq("data", todaySP()),
       supabase
         .from("gelo_vendas")
         .select("valor_total")
         .is("deleted_at", null)
-        .eq("data", today),
+        .eq("data", todaySP()),
       supabase
         .from("gelo_custos")
         .select("descricao, categoria, estoque_atual")
@@ -72,7 +69,7 @@ export default function Dashboard() {
         .from("gelo_producao")
         .select("quantidade")
         .is("deleted_at", null)
-        .gte("data", sevenDaysAgo),
+        .gte("data", daysAgoSP(7)),
       supabase
         .from("revenda_mov_saidas")
         .select("*", { count: "exact", head: true })
@@ -92,13 +89,13 @@ export default function Dashboard() {
         .select("*", { count: "exact", head: true })
         .is("deleted_at", null)
         .eq("concluido", false)
-        .lt("agendado_para", today),
+        .lt("agendado_para", todaySP()),
       supabase
         .from("agendamentos")
         .select("*")
         .is("deleted_at", null)
         .eq("concluido", false)
-        .gte("agendado_para", today)
+        .gte("agendado_para", todaySP())
         .order("agendado_para")
         .limit(5),
       supabase
@@ -113,11 +110,15 @@ export default function Dashboard() {
         .is("deleted_at", null)
         .order("data", { ascending: false })
         .limit(1),
-      supabase
-        .from("veiculos_abastecimentos")
-        .select("veiculo_id, data, km, litros")
-        .is("deleted_at", null)
-        .order("data", { ascending: true }),
+      // fetchAll: sem paginação o Supabase corta em 1000 linhas
+      fetchAll(() =>
+        supabase
+          .from("veiculos_abastecimentos")
+          .select("veiculo_id, data, km, litros")
+          .is("deleted_at", null)
+          .order("data", { ascending: true })
+          .order("id"),
+      ),
     ]);
 
     const vendasHoje = (geloVendas || []).reduce(
@@ -192,12 +193,16 @@ export default function Dashboard() {
   }, []);
 
   useEffect(() => {
-    fetchStats();
+    // Assíncrono (microtask) para não chamar setState de forma síncrona no effect
+    let ignore = false;
+    Promise.resolve().then(() => {
+      if (!ignore) fetchStats();
+    });
+    return () => {
+      ignore = true;
+    };
   }, [fetchStats]);
 
-  const fmtMoney = (v) => `R$ ${Number(v).toFixed(2)}`;
-  const fmtDate = (d) =>
-    d ? new Date(d + "T00:00:00").toLocaleDateString("pt-BR") : "—";
 
   const cards = [
     {
@@ -215,7 +220,7 @@ export default function Dashboard() {
       iconBg: stats.revendaPendentes > 0 ? "bg-warning/10" : "bg-primary-50",
       iconColor:
         stats.revendaPendentes > 0 ? "text-warning" : "text-primary-500",
-      label: "Revenda",
+      label: "Movimentações",
       value:
         stats.revendaPendentes > 0
           ? `${stats.revendaPendentes} saídas pendentes`
@@ -360,7 +365,7 @@ export default function Dashboard() {
                   {l.titulo}
                 </span>
                 <span className="text-xs text-text-secondary shrink-0">
-                  {l.agendado_para?.slice(0, 10) === today
+                  {l.agendado_para?.slice(0, 10) === todaySP()
                     ? "Hoje"
                     : fmtDate(l.agendado_para?.slice(0, 10))}
                   {l.agendado_para ? ` · ${l.agendado_para.slice(11, 16)}` : ""}
@@ -370,6 +375,9 @@ export default function Dashboard() {
           </div>
         </div>
       )}
+
+      {/* Histórico de backups */}
+      <BackupCard />
 
       {/* Alerta de atrasados */}
       {stats.agendamentosAtrasados > 0 && (

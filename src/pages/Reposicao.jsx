@@ -25,26 +25,25 @@ import {
   Target,
 } from "lucide-react";
 import Modal from "../components/Modal";
+import { todaySP, addDaysISO } from "../lib/date";
+import { fetchAll } from "../lib/db";
+import { fmtDate } from "../lib/format";
 
 const TABS = [
   { key: "risco", label: "Risco", icon: ShieldAlert },
   { key: "calendario", label: "Calendário", icon: CalendarDays },
 ];
 
-const today = new Date().toISOString().slice(0, 10);
 const MS_PER_DAY = 86400000;
 
 function diffDays(dateStr) {
   if (!dateStr) return Infinity;
   return Math.floor(
-    (new Date(today + "T00:00:00") - new Date(dateStr + "T00:00:00")) /
+    (new Date(todaySP() + "T00:00:00") - new Date(dateStr + "T00:00:00")) /
       MS_PER_DAY,
   );
 }
 
-function fmtDate(d) {
-  return d ? new Date(d + "T00:00:00").toLocaleDateString("pt-BR") : "—";
-}
 
 // ── Risk score: 0 (safe) → 100 (critical) ──
 function calcRiskScore(daysSince, avgInterval) {
@@ -101,15 +100,10 @@ function PdvCard({ pdv, produtos }) {
 
   const predictedDate =
     pdv.avgInterval > 0 && pdv.lastDate
-      ? new Date(
-          new Date(pdv.lastDate + "T00:00:00").getTime() +
-            pdv.avgInterval * MS_PER_DAY,
-        )
-          .toISOString()
-          .slice(0, 10)
+      ? addDaysISO(pdv.lastDate, pdv.avgInterval)
       : null;
   const daysUntilNext = predictedDate
-    ? diffDays(today) - diffDays(predictedDate)
+    ? diffDays(todaySP()) - diffDays(predictedDate)
     : null;
   const isOverdue = daysUntilNext !== null && daysUntilNext < 0;
 
@@ -345,14 +339,18 @@ export default function Reposicao() {
           .select("id, nome, natureza")
           .is("deleted_at", null)
           .order("nome"),
-        supabase
-          .from("revenda_mov_saidas")
-          .select(
-            "id, pdv_id, data, is_perda, revenda_mov_saidas_itens(produto_id, quantidade, valor_venda_unitario, valor_compra_unitario)",
-          )
-          .is("deleted_at", null)
-          .eq("is_perda", false)
-          .order("data", { ascending: true }),
+        // fetchAll: sem paginação o Supabase corta em 1000 linhas
+        fetchAll(() =>
+          supabase
+            .from("revenda_mov_saidas")
+            .select(
+              "id, pdv_id, data, is_perda, revenda_mov_saidas_itens(produto_id, quantidade, valor_venda_unitario, valor_compra_unitario)",
+            )
+            .is("deleted_at", null)
+            .eq("is_perda", false)
+            .order("data", { ascending: true })
+            .order("id"),
+        ),
         supabase
           .from("cadastro_contatos")
           .select("entidade_id, telefone")
@@ -557,12 +555,7 @@ export default function Reposicao() {
             diasEntreUltimos * calendarioFator * 0.1,
         );
 
-        const dataPrevista = new Date(
-          new Date(pdv.lastDate + "T00:00:00").getTime() +
-            diasPrevistos * MS_PER_DAY,
-        )
-          .toISOString()
-          .slice(0, 10);
+        const dataPrevista = addDaysISO(pdv.lastDate, diasPrevistos);
 
         // Probabilidade de comprar hoje
         const diasDesdeUltima = pdv.daysSince;
@@ -940,7 +933,7 @@ export default function Reposicao() {
               </div>
             </div>
             <div className="divide-y divide-border-custom">
-              {previsoes.filter((p) => p.dataPrevista <= today).length === 0 ? (
+              {previsoes.filter((p) => p.dataPrevista <= todaySP()).length === 0 ? (
                 <div className="px-4 py-6 text-center">
                   <CalendarDays
                     className="mx-auto text-text-disabled mb-2"
@@ -952,7 +945,7 @@ export default function Reposicao() {
                 </div>
               ) : (
                 previsoes
-                  .filter((p) => p.dataPrevista <= today)
+                  .filter((p) => p.dataPrevista <= todaySP())
                   .slice(0, 10)
                   .map((p) => (
                     <div
@@ -1024,8 +1017,8 @@ export default function Reposicao() {
                   .sort((a, b) => a.dataPrevista.localeCompare(b.dataPrevista))
                   .slice(0, 15)
                   .map((p) => {
-                    const isToday = p.dataPrevista === today;
-                    const isPast = p.dataPrevista < today;
+                    const isToday = p.dataPrevista === todaySP();
+                    const isPast = p.dataPrevista < todaySP();
                     return (
                       <div
                         key={p.id}
@@ -1201,7 +1194,7 @@ export default function Reposicao() {
                       messages: [
                         {
                           role: "system",
-                          content: `Você é um assistente de vendas/reposição de gelo. Analise os dados dos PDVs e dê insights práticos e objetivos em português. Dados dos PDVs (top 30 por risco):\n${JSON.stringify(context, null, 2)}\n\nHoje: ${today}. Responda de forma concisa e acionável.`,
+                          content: `Você é um assistente de vendas/reposição de gelo. Analise os dados dos PDVs e dê insights práticos e objetivos em português. Dados dos PDVs (top 30 por risco):\n${JSON.stringify(context, null, 2)}\n\nHoje: ${todaySP()}. Responda de forma concisa e acionável.`,
                         },
                         ...aiMessages.map((m) => ({
                           role: m.role,
