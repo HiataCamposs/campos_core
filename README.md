@@ -51,7 +51,7 @@ As mudanças de banco ficam em `migrations/`, numeradas. **Rode-as em ordem** no
 
 ## Backup
 
-O workflow [.github/workflows/backup.yml](.github/workflows/backup.yml) roda **todo domingo às 03:00 (Brasília)**. Ele exporta o banco com `pg_dump`, criptografa o arquivo e o guarda por 90 dias na aba **Actions** do GitHub. Funciona no plano gratuito do Supabase. Se falhar, o GitHub manda e-mail.
+O workflow [.github/workflows/backup.yml](.github/workflows/backup.yml) roda **todo dia às 03:00 (Brasília)**. Ele exporta o banco com `pg_dump`, criptografa o arquivo e o guarda por 90 dias na aba **Actions** do GitHub. Funciona no plano gratuito do Supabase. Se falhar, o GitHub manda e-mail.
 
 O backup contém:
 
@@ -69,7 +69,9 @@ Arquivos do Supabase **Storage** (imagens, logos) **não** entram no backup.
 2. No GitHub, abra **Settings → Secrets and variables → Actions → New repository secret** e crie:
    - `SUPABASE_DB_URL`: a connection string do passo 1.
    - `BACKUP_PASSWORD`: uma senha forte para criptografar o backup. **Guarde essa senha fora do GitHub**, porque sem ela o backup não abre.
-3. Em **Actions → Backup semanal → Run workflow**, rode uma vez para testar.
+3. Em **Actions → Backup diário → Run workflow**, rode uma vez para testar.
+
+> O GitHub desativa workflows agendados de repositórios **públicos** sem nenhum commit há 60 dias, e avisa por e-mail antes. Se isso acontecer, o bloco Backup da tela Início mostra "Backup atrasado". Para reativar, vá em Actions → Backup diário → **Enable workflow**.
 
 ### Baixar e abrir
 

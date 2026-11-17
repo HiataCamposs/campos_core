@@ -9,9 +9,9 @@ import {
 import { supabase } from "../lib/supabaseClient";
 import { TZ } from "../lib/date";
 
-// O backup roda todo domingo às 03:00 (Brasília). Passados mais de 8 dias
-// desde o último sucesso, algo deu errado (ex.: workflow desativado).
-const DIAS_ATRASO = 8;
+// O backup roda todo dia às 03:00 (Brasília). Passado mais de 1 dia desde
+// o último sucesso, algo deu errado (ex.: workflow desativado pelo GitHub).
+const DIAS_ATRASO = 1;
 
 const fmtQuando = (iso) => {
   const d = new Date(iso);
@@ -34,20 +34,14 @@ const fmtTamanho = (bytes) => {
 const diasDesde = (iso) =>
   Math.floor((Date.now() - new Date(iso).getTime()) / 86400000);
 
-/** Próximo domingo às 03:00 de Brasília (06:00 UTC). */
+/** Próxima execução: todo dia às 03:00 de Brasília (06:00 UTC). */
 const proximoBackup = () => {
   const agora = new Date();
   const alvo = new Date(agora);
   alvo.setUTCHours(6, 0, 0, 0);
-  const faltam = (7 - alvo.getUTCDay()) % 7;
-  alvo.setUTCDate(alvo.getUTCDate() + faltam);
-  if (alvo <= agora) alvo.setUTCDate(alvo.getUTCDate() + 7);
-  return alvo.toLocaleDateString("pt-BR", {
-    timeZone: TZ,
-    weekday: "short",
-    day: "2-digit",
-    month: "2-digit",
-  });
+  if (alvo <= agora) alvo.setUTCDate(alvo.getUTCDate() + 1);
+  const dia = (d) => d.toLocaleDateString("sv-SE", { timeZone: TZ });
+  return dia(alvo) === dia(agora) ? "hoje" : "amanhã";
 };
 
 export default function BackupCard() {

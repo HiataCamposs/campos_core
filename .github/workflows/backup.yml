@@ -1,4 +1,4 @@
-# Backup semanal do banco Supabase (funciona no plano gratuito).
+# Backup diário do banco Supabase (funciona no plano gratuito).
 #
 # Exporta o banco com pg_dump, criptografa com uma senha (AES-256) e guarda
 # como artifact do GitHub por 90 dias. Se falhar, o GitHub manda e-mail.
@@ -12,12 +12,12 @@
 #
 # Como baixar e restaurar: veja a seção "Backup" do README.md.
 
-name: Backup semanal
+name: Backup diário
 
 on:
   schedule:
-    # Todo domingo às 06:00 UTC (03:00 em Brasília)
-    - cron: "0 6 * * 0"
+    # Todo dia às 06:00 UTC (03:00 em Brasília)
+    - cron: "0 6 * * *"
   workflow_dispatch: # permite rodar manualmente pela aba Actions
 
 permissions:
